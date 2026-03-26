@@ -2,6 +2,10 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.0.5] - 2026-03-26
+
+- Fixed pastel colour activation.
+
 ## [1.0.4] - 2026-03-26
 
 ### Added
