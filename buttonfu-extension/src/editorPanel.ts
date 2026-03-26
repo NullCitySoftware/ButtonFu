@@ -1509,6 +1509,18 @@ export class ButtonEditorPanel {
                         <div class="colour-swatch" style="background:#607d8b" data-colour="#607d8b" title="Grey"></div>
                         <div class="colour-swatch" style="background:#ffffff" data-colour="" title="Default (no colour)"></div>
                     </div>
+                    <div class="colour-presets">
+                        <div class="colour-swatch" style="background:#aed6f1" data-colour="#aed6f1" title="Pastel Blue"></div>
+                        <div class="colour-swatch" style="background:#a9dfbf" data-colour="#a9dfbf" title="Pastel Green"></div>
+                        <div class="colour-swatch" style="background:#fad7a0" data-colour="#fad7a0" title="Pastel Peach"></div>
+                        <div class="colour-swatch" style="background:#f5b7b1" data-colour="#f5b7b1" title="Pastel Coral"></div>
+                        <div class="colour-swatch" style="background:#d7bde2" data-colour="#d7bde2" title="Pastel Lavender"></div>
+                        <div class="colour-swatch" style="background:#fef9c3" data-colour="#fef9c3" title="Pastel Yellow"></div>
+                        <div class="colour-swatch" style="background:#a3e4db" data-colour="#a3e4db" title="Pastel Teal"></div>
+                        <div class="colour-swatch" style="background:#f8b4c8" data-colour="#f8b4c8" title="Pastel Rose"></div>
+                        <div class="colour-swatch" style="background:#c5cae9" data-colour="#c5cae9" title="Pastel Periwinkle"></div>
+                        <div class="colour-swatch" style="background:#d7ccc8" data-colour="#d7ccc8" title="Pastel Taupe"></div>
+                    </div>
                 </div>
             </div>
 

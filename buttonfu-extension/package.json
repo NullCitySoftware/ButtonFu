@@ -114,7 +114,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "node -e \"const fs=require('fs');['README.md','CHANGELOG.md','LICENSE'].forEach(f=>fs.copyFileSync('../'+f,f));\" && npm run package-extension",
+    "vscode:prepublish": "node -e \"const fs=require('fs');['README.md','CHANGELOG.md','LICENSE','README_PIC1.png','README_PIC2.png','README_PIC3.png'].forEach(f=>fs.copyFileSync('../'+f,f));\" && npm run package-extension",
     "compile": "npm run check-types && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",

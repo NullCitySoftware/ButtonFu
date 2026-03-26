@@ -2,6 +2,13 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.0.4] - 2026-03-26
+
+### Added
+- **Keyboard shortcuts** — every button registers a unique VS Code command (`buttonfu.run.<id>`) so it can be targeted by keybindings; the editor shows a **Set Keyboard Shortcut** button (visible when editing an existing button) that opens the VS Code keybindings editor pre-filtered to that button's command; any assigned shortcut is read from `keybindings.json` and displayed on the button's card in the editor list
+- **Multi-terminal execution** — Terminal Command buttons can define multiple named tabs, each with its own command text; tabs run in **parallel** by default, or switch to **sequential** mode when any tab has the *Dependant On Previous Terminal Success* flag set — a dependent tab only runs if its predecessor exits with code 0, and the chain halts on the first failure; each tab opens in its own VS Code terminal named `ButtonFu: <button> — <tab>`; uses VS Code shell integration (1.93+) for accurate exit-code detection with a three-second fallback to close-detection for older environments; the tab bar supports add, rename (double-click or F2), delete, and left/right reorder
+- **Pastel colour presets** — a second row of ten soft pastel swatches (Pastel Blue, Green, Peach, Coral, Lavender, Yellow, Teal, Rose, Periwinkle, Taupe) has been added beneath the existing vivid colour row in the button editor colour picker
+
 ## [1.0.3] - 2026-03-24
 
 ### Added

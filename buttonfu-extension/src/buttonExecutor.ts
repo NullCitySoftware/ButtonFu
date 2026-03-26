@@ -292,19 +292,24 @@ export class ButtonExecutor {
             return;
         }
 
-        const allDependent = tabs.every(t => t.dependantOnPrevious);
+        const hasAnyDependency = tabs.some(t => t.dependantOnPrevious);
 
-        if (allDependent && tabs.length > 1) {
-            // Sequential execution: wait for each terminal to finish before starting the next
+        if (hasAnyDependency) {
+            // Mixed sequential/parallel: each tab that is marked dependantOnPrevious waits
+            // for the previous tab to succeed before starting.
+            let previousPromise: Promise<boolean> = Promise.resolve(true);
             for (const tab of tabs) {
-                const success = await this.runTerminalTabAndWait(button, tab);
-                if (!success) {
-                    vscode.window.showErrorMessage(`ButtonFu: Terminal "${tab.name}" failed. Stopping execution.`);
-                    return;
+                if (tab.dependantOnPrevious) {
+                    const ok = await previousPromise;
+                    if (!ok) {
+                        vscode.window.showErrorMessage(`ButtonFu: Terminal "${tab.name}" skipped because the previous terminal failed.`);
+                        return;
+                    }
                 }
+                previousPromise = this.runTerminalTabAndWait(button, tab);
             }
         } else {
-            // Parallel: fire all terminals at once
+            // All independent: fire all terminals at once
             for (const tab of tabs) {
                 const terminal = vscode.window.createTerminal(`ButtonFu: ${button.name} — ${tab.name}`);
                 terminal.show();
