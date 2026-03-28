@@ -4,21 +4,25 @@
 
 ButtonFu already covers the core launcher workflow well. It can run terminal commands, VS Code commands, tasks, and Copilot prompts; supports global and workspace scopes; has categories, icons, colours, keyboard shortcuts, user/system tokens, warn-before-run, and multi-terminal execution.
 
-The main product gap is that ButtonFu still behaves like a strong personal launcher, not yet like a reusable automation layer for an individual power user or a team. The current implementation makes it easy to create and run a button, but much harder to:
+The main product gap is that ButtonFu still behaves like a strong personal launcher, not yet like a governed automation layer for individual users, teams, and companies. The current implementation makes it easy to create and run a button, but much harder to:
 
+- distribute approved button sets from a central source
+- keep team or company defaults aligned while still allowing sensible local overrides
 - share button sets across machines or repositories
 - manage a large library of buttons efficiently
 - compose multi-step workflows
 - collect richer runtime input
 - understand what happened after a button ran
+- roll out shared automation safely across a team
 
 If the goal is to add features that provide genuine user value rather than surface novelty, the highest-leverage areas are:
 
-1. portable and shareable button packs
-2. search, quick-run, favourites, and large-library navigation
-3. multi-step workflow buttons
-4. richer input types and secret handling
-5. execution visibility, status, and history
+1. managed button catalogs and central repository support
+2. layered configuration, overrides, and governance
+3. search, quick-run, favourites, and large-library navigation
+4. multi-step workflow buttons
+5. richer input types, secret references, and dependency checks
+6. execution visibility, status, and history
 
 ## Scope and Evidence Base
 
@@ -45,9 +49,11 @@ Current evidence that shapes the gap analysis:
 - `src/extension.ts` exposes only the core lifecycle commands: open editor, execute, add, edit, delete, refresh, plus dynamic per-button run commands.
 - `src/buttonPanelProvider.ts` groups buttons only by locality and category; there is no search, favourite, recent, filter, or visibility system.
 - `resources/editor.js` supports CRUD, duplicate, reorder, token editing, and option toggles, but not bulk edit, import/export, templates, or pack management.
+- `src/buttonPanelProvider.ts` and `src/editorPanel.ts` only persist a small set of local UI options in `globalState`; there is no shared ButtonFu settings profile or managed policy layer.
 - `src/types.ts` limits user token input types to `String`, `MultiLineString`, `Integer`, and `Boolean`.
 - `src/buttonExecutor.ts` executes actions but does not persist structured execution history or expose a first-class output/result view.
 - `src/buttonExecutor.ts` attaches Copilot files from an explicit list only; there is no pattern-based or context-derived attachment model.
+- `src/buttonExecutor.ts` has no concept of prerequisites, managed secret references, or centrally defined environment profiles for shared buttons.
 - Multiple host paths still assume the first workspace folder, which limits multi-root value.
 
 ## What ButtonFu Already Does Well
@@ -64,7 +70,7 @@ That matters because the next features should extend those strengths rather than
 
 ## Where The Current Product Tops Out
 
-The current design starts to strain in five situations:
+The current design starts to strain in seven situations:
 
 ### 1. When a user wants to reuse or share buttons
 
@@ -86,59 +92,78 @@ Primitive input types are present, but many practical workflows need choices, fi
 
 ButtonFu triggers actions well, but it provides little durable insight into whether a run succeeded, failed, produced useful output, or should be repeated.
 
+### 6. When a team or company wants one approved source of truth
+
+A central catalog, shared settings profile, pinned versions, layered overrides, and safe update flow do not exist yet.
+
+### 7. When shared buttons depend on approved tools, secrets, or environment setup
+
+The extension has no prerequisite diagnostics, managed secret references, or organization environment profiles, so shared automation will accumulate setup drift and support burden.
+
 ## Prioritized Opportunity List
 
 The table below ranks gaps by likely user value, fit with ButtonFu's current architecture, and practical implementation leverage.
 
 | Rank | Feature Area | User Value | Build Cost | Recommendation |
 | --- | --- | --- | --- | --- |
-| 1 | Portable button packs and import/export | Very high | Medium | Build next |
-| 2 | Searchable quick-run, sidebar filtering, favourites, recents | Very high | Medium | Build next |
-| 3 | Workflow buttons for multi-step automation | Very high | High | Build soon |
-| 4 | Rich token input types and secret storage | High | Medium | Build soon |
-| 5 | Execution status, history, and result visibility | High | Medium-high | Build soon |
-| 6 | Visibility and enablement rules | High | Medium | Build soon |
-| 7 | Terminal execution context controls | High | Medium | Build soon |
-| 8 | Copilot attachment patterns and response destinations | High | Medium-high | Build after core workflow features |
-| 9 | Templates, starter packs, and reusable presets | Medium-high | Medium | Build after pack support |
-| 10 | Multi-root workspace awareness | Medium-high | Medium-high | Build progressively |
-| 11 | Extra launch surfaces beyond the sidebar | Medium | Medium | Useful follow-on |
-| 12 | Bulk management and archive flows | Medium | Medium | Important after adoption scales |
+| 1 | Managed button catalogs, central repositories, and import/export | Very high | Medium-high | Build next |
+| 2 | Layered configuration, locked fields, and local overrides | Very high | Medium | Build next |
+| 3 | Searchable quick-run, sidebar filtering, favourites, recents | Very high | Medium | Build next |
+| 4 | Governance, trust, versioning, and rollout controls | Very high | Medium-high | Build soon |
+| 5 | Workflow buttons for multi-step automation | Very high | High | Build soon |
+| 6 | Rich token input types and secret storage | High | Medium | Build soon |
+| 7 | Organization secrets, environment profiles, and dependency diagnostics | High | Medium-high | Build soon |
+| 8 | Execution status, history, and result visibility | High | Medium-high | Build soon |
+| 9 | Visibility and enablement rules | High | Medium | Build soon |
+| 10 | Terminal execution context controls | High | Medium | Build soon |
+| 11 | Ownership metadata, support links, and onboarding flows | Medium-high | Medium | Build after catalog support |
+| 12 | Copilot attachment patterns and response destinations | High | Medium-high | Build after core workflow features |
+| 13 | Templates, starter packs, and reusable presets | Medium-high | Medium | Build after pack support |
+| 14 | Multi-root workspace awareness | Medium-high | Medium-high | Build progressively |
+| 15 | Extra launch surfaces beyond the sidebar | Medium | Medium | Useful follow-on |
+| 16 | Bulk management and archive flows | Medium | Medium | Important after adoption scales |
+| 17 | Optional admin reporting and adoption insights | Low-medium | Medium | Only after trust and privacy model exist |
 
 ## Detailed Gap Analysis
 
-## 1. Portable Button Packs And Import/Export
+## 1. Managed Button Catalogs, Central Repositories, And Import/Export
 
 ### Why this is a genuine gap
 
-ButtonFu is already useful for personal automation, but its current storage model blocks one of the highest-value outcomes: reusable button libraries.
+ButtonFu is already useful for personal automation, but its current storage model blocks one of the highest-value outcomes: centrally managed, reusable button libraries.
 
 Today:
 
 - global buttons live in user settings
 - workspace buttons live in `workspaceState`
-- neither model is a clean team-sharing story
+- neither model is a clean team-sharing story or a workable company distribution channel
 
 That means users cannot easily:
 
+- point the extension at a team-owned catalog repository or manifest
 - commit project-specific buttons to source control
 - review button changes in pull requests
 - move a curated library between machines
 - publish starter packs for a language or workflow
+- roll out a shared button and settings baseline to everyone in a group
 
 ### Recommended feature shape
 
-Add a formal pack model with three capabilities:
+Add a formal catalog model with these capabilities:
 
-- import/export JSON
+- import/export JSON for ad hoc sharing
 - repo-backed pack files such as `.buttonfu/buttons.json` or `.vscode/buttonfu.json`
+- central catalog sources: local file path, workspace file, Git repository URL or path, or raw HTTPS endpoint
+- pinned refs such as branch, tag, or commit
+- shared ButtonFu settings profiles stored beside the catalog so teams can standardize layout, defaults, and policy knobs
 - merge modes: add only, update matching IDs, replace existing set
+- manual refresh plus background update checks with local caching
 
 For team safety, loading repo-backed buttons should include a trust prompt because shell and Copilot buttons can execute meaningful actions.
 
 ### Why it should rank first
 
-This is the clearest leap from "nice launcher" to "automation asset". It improves onboarding, backup, collaboration, migration, and long-term retention.
+This is the clearest leap from "nice launcher" to "automation asset". It improves onboarding, backup, collaboration, migration, long-term retention, and creates the foundation for almost every serious team or company feature.
 
 ### Primary code touchpoints
 
@@ -147,6 +172,134 @@ This is the clearest leap from "nice launcher" to "automation asset". It improve
 - `src/editorPanel.ts`
 - `resources/editor.js`
 - `package.json` command contributions
+
+## 1A. Layered Configuration, Locked Fields, And Local Overrides
+
+### Why this is a genuine gap
+
+A central catalog is not enough on its own. Teams usually need multiple layers:
+
+- company baseline
+- team baseline
+- repository-specific additions
+- user-specific local overrides
+
+Without layering, shared libraries either become too rigid to adopt or drift into local forks.
+
+### Recommended feature shape
+
+Add a precedence model such as:
+
+- company pack
+- team pack
+- repository pack
+- user local pack
+
+Then add:
+
+- per-field lock state for execution text, category, icon, tokens, warnings, and other managed properties
+- explicit local override markers and a reset-to-managed action
+- ability to add personal buttons alongside managed ones without editing the source pack
+- a diff view showing where a managed button has been overridden locally
+
+### Why it matters
+
+This balances control and autonomy. It is the difference between something a company can roll out and something every developer eventually forks.
+
+### Primary code touchpoints
+
+- `src/buttonStore.ts`
+- `src/types.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+
+## 1B. Governance, Trust, Versioning, And Rollout Controls
+
+### Why this is a genuine gap
+
+Shared automation can execute destructive commands or exfiltrate data. A company-scale rollout needs governance primitives, not just file sync.
+
+### Recommended feature shape
+
+Add governance and release management features such as:
+
+- pack schema versioning and compatibility checks
+- trusted source allowlists, checksums, signatures, or publisher identity checks
+- pinned versions plus upgrade diff and changelog prompts
+- rollout channels such as stable and canary
+- pack-level policy controls that can restrict unmanaged button types or risky execution modes
+- safe versus privileged button classification with stronger confirmation for sensitive actions
+- a CI-friendly validator or linter for managed catalog repositories
+
+### Why it matters
+
+This is what turns a shared repository into a maintainable internal platform rather than an informal collection of scripts.
+
+### Primary code touchpoints
+
+- `src/buttonStore.ts`
+- `src/extension.ts`
+- `src/buttonExecutor.ts`
+- `package.json`
+
+## 1C. Organization Secrets, Environment Profiles, And Dependency Diagnostics
+
+### Why this is a genuine gap
+
+Team-shared buttons usually depend on more than text. They often require secrets, terminal profiles, CLI tools, extensions, environment variables, or approved execution contexts.
+
+### Recommended feature shape
+
+Add organization-scale execution support such as:
+
+- secret reference tokens resolved at run time, backed by `ExtensionContext.secrets` first and pluggable providers later
+- environment profiles like `dev`, `qa`, and `prod` attached to packs or workspaces
+- per-button prerequisites: extension IDs, commands, tasks, shells, operating systems, environment variables, or files
+- readiness checks when a pack is installed or updated
+- one-click guidance for missing dependencies
+- dry-run or validation mode for managed buttons before wide rollout
+
+### Why it matters
+
+This dramatically lowers support burden for centrally managed button libraries and reduces "works on my machine" drift.
+
+### Primary code touchpoints
+
+- `src/types.ts`
+- `src/tokenInputPanel.ts`
+- `src/buttonExecutor.ts`
+- `src/extension.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+
+## 1D. Ownership Metadata, Support Links, And Onboarding Flows
+
+### Why this is a genuine gap
+
+Once buttons are shared widely, users need to know who owns them, where the docs live, and what to do when something breaks.
+
+### Recommended feature shape
+
+Add supportability features such as:
+
+- per-button or per-pack metadata: owner, team, docs URL, runbook URL, last reviewed date, tags, deprecation status, and replacement button
+- sidebar and editor affordances to open docs or jump to the owning team
+- onboarding commands that connect a user to the organization catalog, install prerequisites, and sync required packs or settings
+- pack changelog and migration notes surfaced in the extension UI
+- optional, privacy-conscious adoption reporting or health exports for maintainers after the trust model is mature
+
+### Why it matters
+
+Shared automation without ownership becomes orphaned automation. This feature turns button packs into supportable internal tooling.
+
+### Primary code touchpoints
+
+- `src/types.ts`
+- `src/buttonStore.ts`
+- `src/buttonPanelProvider.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+- `package.json`
 
 ## 2. Searchable Quick-Run, Sidebar Filtering, Favourites, And Recents
 
@@ -171,7 +324,7 @@ Start with a single discovery layer rather than multiple disconnected features:
 
 This is likely more valuable than nested menu structures as a first scale feature. Search and quick-run reduce friction for both mouse-first and keyboard-first users.
 
-### Why it should rank second
+### Why it should still rank near the top
 
 It directly improves everyday usability without requiring major data model changes.
 
@@ -495,85 +648,505 @@ This matters mostly after adoption scale has already been achieved. It should fo
 - `src/editorPanel.ts`
 - `src/buttonStore.ts`
 
-## Suggested Roadmap
+## Agentic Implementation Plan
 
-## Phase 1: Improve Everyday Value
+This section is intentionally written as an execution brief for a future implementation agent. It is not a request to start coding now. It is a phased plan that another agent can follow later.
 
-Build these first:
+### Operating Rules For Any Implementation Agent
 
-1. portable button packs plus import/export
-2. quick-run plus search/filter/favourites
-3. rich token input types plus secret storage
-4. visibility and enablement rules
-5. terminal execution context controls
+- Implement exactly one phase at a time and in order.
+- Do not start the next phase until the current phase has passed the mandatory review gate described below.
+- Do not add features from later phases early unless the current phase cannot be completed correctly without a minimal enabling slice.
+- Preserve backward compatibility for existing global and local buttons unless the current phase explicitly includes an approved migration.
+- Keep migrations deterministic, reversible where practical, and visible to the user.
+- Update documentation, changelog notes, tests, and migration notes in the same phase as the code change.
+- Treat managed or centrally sourced buttons as higher risk than personal buttons. Favor explicit trust prompts, safe defaults, and visible provenance.
+- Prefer small end-to-end slices over broad partially finished scaffolding.
+- If a phase uncovers major architectural constraints, stop at the end of that phase, document the constraint, and revise the remaining phases before continuing.
 
-Why this phase first:
+### Mandatory Review Gate After Every Phase
 
-- it improves daily usage immediately
-- it strengthens ButtonFu's core launcher identity
-- it avoids large runtime complexity too early
+After each phase is implemented, a full code review must be performed before any work begins on the next phase.
 
-## Phase 2: Move From Launcher To Workflow Tool
+Required review perspectives:
 
-Build these next:
+1. Grumpy, nitpicky senior engineer
+2. Grumpy, nitpicky senior appsec specialist
+3. Senior, nitpicky UI/UX designer and implementer
 
-1. workflow buttons with ordered steps
-2. run status and history
-3. Copilot attachment patterns and response destinations
-4. basic output/result surfaces where the API allows it
+Required review output format:
 
-Why this phase second:
+- findings first
+- ordered by severity
+- include file references and concrete behavior risk
+- call out regressions, missing tests, and unresolved tradeoffs
+- only after findings, include open questions or a short summary
+- if no findings exist, state that explicitly and still mention residual risks or testing gaps
 
-- it compounds the value of the existing action types
-- it makes ButtonFu more differentiated without turning it into a general scripting platform
+Required remediation rules:
 
-## Phase 3: Scale, Polish, And Broaden Reach
+- all critical and high findings must be fixed before the phase can be closed
+- medium findings must either be fixed or explicitly recorded as accepted follow-up work
+- low findings may be deferred, but only if documented
+- after fixes, rerun the relevant validation for the changed surface
 
-Build these after the foundations are in place:
+Minimum validation after every phase:
 
-1. templates and starter packs
-2. multi-root awareness
-3. extra invocation surfaces
-4. bulk management and archive flows
+- compile/build validation for the extension
+- linting for touched code
+- targeted manual testing of the changed flows
+- migration verification for any changed storage model
 
-## Features To Explicitly Defer
+### Phase 0: Foundation Contract And Migration Design
 
-These ideas may sound attractive, but they are not the best next investments for genuine user value.
+#### Goal
 
-### 1. Full scripting language or complex flow DSL
+Define the data contracts, trust model, migration strategy, and implementation boundaries before user-visible catalog features are added.
 
-Basic sequencing and rules are valuable. A full mini-language is likely to add complexity faster than value.
+#### In Scope
+
+- managed catalog schema design
+- schema versioning plan
+- precedence model for company, team, repository, and user layers
+- migration and rollback strategy from current storage
+- trust and provenance model for managed sources
+- validation and test matrix for future phases
+
+#### Out Of Scope
+
+- shipping managed catalog loading
+- shipping remote sync
+- shipping search, workflow, or history UI
+
+#### Implementation Tasks
+
+1. Define the catalog schema for buttons, shared settings profiles, source metadata, ownership metadata, prerequisites, and policy fields.
+2. Define stable IDs and collision rules for imported or centrally managed buttons.
+3. Define the precedence model for company, team, repository, and user-local layers.
+4. Define which fields can be locked, overridden locally, or always remain user-editable.
+5. Define migration behavior from current `globalButtons` and `workspaceState` storage.
+6. Define trust states for managed sources such as unknown, trusted, pinned, invalid, or deprecated.
+7. Define the test matrix that later phases must satisfy, including backward-compatibility cases and multi-root edge cases.
+
+#### Likely Code Areas
+
+- `src/types.ts`
+- `src/buttonStore.ts`
+- `docs/` for schema and migration notes
+
+#### Done When
+
+- the schema and precedence rules are documented and versioned
+- migration behavior is specified clearly enough that a follow-on agent can implement it without guessing
+- trust, provenance, and override rules are explicit
+- future phases have a written test matrix to inherit
+
+#### Review Focus
+
+- engineer: schema clarity, migration safety, future extensibility
+- appsec: trust boundaries, source authenticity, safe defaults
+- UI/UX: whether the model can be explained to users without confusion
+
+### Phase 1: Managed Catalog Core And File-Backed Packs
+
+#### Goal
+
+Introduce the first usable managed catalog path using local or workspace-backed pack files plus import/export, without remote sync yet.
+
+#### In Scope
+
+- import/export JSON
+- workspace or repository file-backed button packs
+- shared ButtonFu settings profile loaded from pack files
+- source metadata and managed-button read-only presentation
+- manual refresh and disconnect flows
+
+#### Out Of Scope
+
+- remote HTTP or Git-based sources
+- layered company or team packs
+- local override editing of managed fields
+- rollout channels or auto-update policies
+
+#### Implementation Tasks
+
+1. Add types and store support for a managed catalog source and pack manifest.
+2. Load buttons and approved shared settings from a file-backed pack inside the workspace or another local path.
+3. Add commands to connect a pack, disconnect a pack, import buttons, export buttons, and refresh the current pack.
+4. Surface provenance in the UI so users can tell whether a button is local, global, or managed.
+5. Make managed buttons read-only unless explicitly flagged as locally editable by the schema.
+6. Keep existing personal buttons working unchanged alongside managed buttons.
+7. Handle missing, invalid, or outdated pack files gracefully with actionable error states.
+
+#### Likely Code Areas
+
+- `src/buttonStore.ts`
+- `src/types.ts`
+- `src/extension.ts`
+- `src/buttonPanelProvider.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+- `package.json`
+
+#### Done When
+
+- a user can point ButtonFu at a pack file and see managed buttons and shared settings load successfully
+- managed buttons are visibly distinct from personal buttons
+- import/export works for ad hoc sharing without breaking existing storage
+- existing buttons still run and edit correctly
+
+#### Review Focus
+
+- engineer: storage cohesion, migration safety, UI-state consistency
+- appsec: file path handling, trust prompts, malformed pack handling
+- UI/UX: clarity of managed versus personal state, disconnect and error flows
+
+### Phase 2: Central Repository Sources, Caching, And Safe Update Flow
+
+#### Goal
+
+Allow ButtonFu to consume centrally managed catalogs from Git or URL-backed sources with an explicit, reviewable update model.
+
+#### In Scope
+
+- Git-backed or URL-backed catalog sources
+- pinned branch, tag, or commit support
+- local cache of the last known good catalog
+- update check, diff preview, and apply flow
+- source trust prompt and allowlist behavior
+
+#### Out Of Scope
+
+- multi-layer override resolution
+- field locking and local overrides
+- hosted marketplace or control plane
+
+#### Implementation Tasks
+
+1. Add source connectors for a Git repository path or URL-backed manifest, with local cache support.
+2. Add pinned ref handling so teams can target a branch, tag, or specific revision.
+3. Add manual update checks and a diff-oriented update preview before applying changes.
+4. Cache the last known good catalog so the extension can recover from transient source failures.
+5. Add trust prompts and source allowlist behavior before activating a newly discovered remote-managed catalog.
+6. Make update failures visible and reversible.
+7. Document the recommended repository layout for team and company catalog repositories.
+
+#### Likely Code Areas
+
+- `src/buttonStore.ts`
+- `src/extension.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+- `package.json`
+
+#### Done When
+
+- a user can point ButtonFu at a central repository or URL-backed catalog and load it successfully
+- updates can be checked and applied without blindly replacing the current experience
+- the extension falls back safely when the source is unavailable or invalid
+- trust state is visible and not silently bypassed
+
+#### Review Focus
+
+- engineer: cache correctness, failure recovery, source abstraction quality
+- appsec: source authenticity, downgrade risks, path traversal, unsafe auto-update behavior
+- UI/UX: reviewability of updates, clarity of source status, confidence in rollback paths
+
+### Phase 3: Layering, Locked Fields, Local Overrides, And Governance
+
+#### Goal
+
+Turn managed catalogs into a realistic team or company deployment model with deterministic layering, policy controls, and local override behavior.
+
+#### In Scope
+
+- precedence across company, team, repository, and user-local layers
+- field locking and override markers
+- reset-to-managed action
+- schema compatibility checks
+- rollout channels such as stable and canary if they fit the source model cleanly
+- policy controls for risky or unmanaged button types
+
+#### Out Of Scope
+
+- prerequisite diagnostics
+- secret providers
+- workflow buttons
+
+#### Implementation Tasks
+
+1. Implement deterministic resolution across company, team, repository, and user-local layers.
+2. Add field-level lock enforcement in both storage and UI.
+3. Add local override markers, diff visibility, and reset-to-managed flows.
+4. Add compatibility checks so unsupported schema or pack versions fail safely.
+5. Add policy controls that can restrict unmanaged button creation or risky button capabilities when a managed catalog requires it.
+6. Add rollout channel support only if it can be explained and enforced clearly.
+7. Add a validator or linter entry point for managed catalogs so catalog maintainers can validate packs outside the extension UI.
+
+#### Likely Code Areas
+
+- `src/buttonStore.ts`
+- `src/types.ts`
+- `src/editorPanel.ts`
+- `src/buttonPanelProvider.ts`
+- `resources/editor.js`
+- `scripts/` if a catalog validator is added
+
+#### Done When
+
+- layered resolution is deterministic and documented
+- locked fields cannot be edited accidentally or through backdoor UI paths
+- local overrides are visible and reversible
+- incompatible or invalid managed catalogs fail closed rather than partially applying
+
+#### Review Focus
+
+- engineer: precedence correctness, override resolution bugs, validator coverage
+- appsec: privilege escalation via overrides, policy bypasses, schema abuse cases
+- UI/UX: user comprehension of lock state, override state, and reset behavior
+
+### Phase 4: Discovery, Ownership Metadata, And Onboarding
+
+#### Goal
+
+Make large managed libraries usable and supportable by improving discovery, ownership, and first-run setup.
+
+#### In Scope
+
+- quick-run command
+- sidebar search and filtering
+- favourites and recents
+- ownership metadata and support links
+- onboarding flow for connecting to a managed catalog and understanding what is installed
+
+#### Out Of Scope
+
+- workflow buttons
+- execution history
+- advanced prerequisite remediation
+
+#### Implementation Tasks
+
+1. Add a `ButtonFu: Run Button...` command backed by `QuickPick`.
+2. Add sidebar search or filter controls that scale to large button libraries.
+3. Add favourites and recents in a way that does not break managed provenance.
+4. Add ownership metadata such as owner, team, docs URL, runbook URL, and deprecation or replacement info.
+5. Add support affordances so users can open docs or understand who owns a managed button.
+6. Add onboarding commands to connect to a company or team catalog and show current source status.
+7. Ensure performance remains acceptable with larger button sets.
+
+#### Likely Code Areas
+
+- `src/extension.ts`
+- `src/buttonPanelProvider.ts`
+- `src/editorPanel.ts`
+- `src/types.ts`
+- `resources/editor.js`
+- `package.json`
+
+#### Done When
+
+- users can discover and run buttons quickly without relying on the sidebar layout alone
+- managed buttons include ownership and support metadata where provided
+- onboarding to a catalog is understandable without external tribal knowledge
+- large libraries remain usable and visually coherent
+
+#### Review Focus
+
+- engineer: performance with large lists, state synchronization, metadata handling
+- appsec: untrusted links, unsafe external navigation, spoofed metadata display
+- UI/UX: search quality, information hierarchy, onboarding clarity, accessibility
+
+### Phase 5: Rich Inputs, Secret References, Prerequisites, Visibility Rules, And Terminal Context
+
+#### Goal
+
+Make shared buttons safe and practical in real environments by improving runtime input quality, environment setup awareness, and execution context control.
+
+#### In Scope
+
+- richer token types
+- secret reference tokens
+- remembered values where appropriate
+- environment profiles
+- per-button prerequisites and readiness diagnostics
+- visibility and enablement rules
+- terminal working directory, shell, environment, and reuse settings
+
+#### Out Of Scope
+
+- multi-step workflow execution
+- full output capture
+- hosted secret backends beyond a clean extension point
+
+#### Implementation Tasks
+
+1. Extend token types to include select, multi-select, file, folder, workspace-folder, and secret-reference inputs.
+2. Use `ExtensionContext.secrets` for secret-backed local storage and keep the design open for future provider integration.
+3. Add environment profile selection for managed packs or workspaces.
+4. Add per-button prerequisites such as required extensions, CLIs, files, shells, operating systems, or environment variables.
+5. Add readiness diagnostics and actionable remediation guidance.
+6. Add visibility and enablement rules so buttons can hide or disable themselves based on context.
+7. Add terminal execution context controls such as working directory, shell or profile, environment variables, and terminal reuse policy.
+
+#### Likely Code Areas
+
+- `src/types.ts`
+- `src/tokenInputPanel.ts`
+- `src/buttonExecutor.ts`
+- `src/buttonPanelProvider.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+- `src/extension.ts`
+
+#### Done When
+
+- managed and personal buttons can collect richer inputs safely
+- secrets are not stored in plain button config
+- users can see why a button is unavailable or not ready
+- terminal buttons can express context without boilerplate shell setup in every command
+
+#### Review Focus
+
+- engineer: validation, backward compatibility, complexity containment in the token and execution model
+- appsec: secret leakage, unsafe token expansion, environment injection, prerequisite trust assumptions
+- UI/UX: form usability, error messaging, disabled-state clarity, diagnostic affordances
+
+### Phase 6: Workflow Buttons, Execution Status, History, And Copilot Expansion
+
+#### Goal
+
+Turn ButtonFu from a launcher into a lightweight workflow orchestrator with visible runtime state and more capable Copilot automation.
+
+#### In Scope
+
+- workflow button type with ordered steps
+- stop-on-failure and minimal branching model
+- execution status and run history
+- result metadata and links back to terminals or outputs
+- Copilot attachment patterns and response destinations where APIs permit
+
+#### Out Of Scope
+
+- full scripting language
+- cron scheduling
+- fragile feature additions that depend on unsupported hidden APIs
+
+#### Implementation Tasks
+
+1. Add a workflow button type that can sequence existing action handlers.
+2. Support per-step labels, stop-on-failure, and a deliberately small first-step model.
+3. Add execution state indicators such as running, succeeded, failed, and last run time.
+4. Add per-button history with timestamps, duration, and outcome metadata.
+5. Add links back to the originating terminal, task, or relevant output surface where practical.
+6. Extend Copilot buttons with pattern-based file attachments and explicit response destinations only where the VS Code and Copilot APIs support it cleanly.
+7. Avoid overbuilding the workflow DSL; keep the first version intentionally narrow.
+
+#### Likely Code Areas
+
+- `src/types.ts`
+- `src/buttonExecutor.ts`
+- `src/buttonPanelProvider.ts`
+- `src/tokenInputPanel.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+
+#### Done When
+
+- a user can create and run a simple multi-step workflow button end to end
+- failures are visible and do not leave the UI ambiguous about what happened
+- history exists for troubleshooting and repetition
+- Copilot enhancements are implemented only within stable, reviewable API constraints
+
+#### Review Focus
+
+- engineer: state-machine correctness, failure handling, test coverage for sequencing
+- appsec: unsafe chaining, output exposure, Copilot attachment trust boundaries
+- UI/UX: step authoring clarity, runtime feedback, recovery from failure, perceived responsiveness
+
+### Phase 7: Scale, Polish, And Follow-On Features
+
+#### Goal
+
+Address the important but non-foundational features that matter after managed catalogs and workflows are stable.
+
+#### In Scope
+
+- templates and starter packs
+- multi-root workspace awareness
+- extra launch surfaces
+- bulk management and archive flows
+- optional admin reporting and adoption insights only after explicit privacy design and approval
+
+#### Out Of Scope
+
+- hosted control plane
+- marketplace model
+- full task-runner replacement
+
+#### Implementation Tasks
+
+1. Add templates or starter packs that build on the managed catalog model rather than bypassing it.
+2. Add multi-root awareness across token resolution, attachments, visibility rules, and execution targeting.
+3. Add extra invocation surfaces only where context genuinely improves usability.
+4. Add bulk management, archive, and subset export flows for larger libraries.
+5. Consider optional reporting or adoption insights only if privacy, consent, and data ownership are fully designed first.
+
+#### Likely Code Areas
+
+- `src/types.ts`
+- `src/buttonStore.ts`
+- `src/extension.ts`
+- `src/buttonPanelProvider.ts`
+- `src/editorPanel.ts`
+- `resources/editor.js`
+- `package.json`
+
+#### Done When
+
+- the extension scales to larger teams and libraries without collapsing into UI clutter or storage confusion
+- multi-root workspaces behave predictably
+- any optional reporting is clearly opt-in and privacy-safe
+
+#### Review Focus
+
+- engineer: scalability, multi-root correctness, maintenance cost
+- appsec: privacy boundaries, consent, unsafe context injection
+- UI/UX: clutter control, discoverability, bulk-flow ergonomics
+
+### Features To Explicitly Defer Unless A Phase Requires A Small Enabling Slice
+
+These ideas may sound attractive, but they should not be treated as primary implementation goals in the first pass.
+
+### 1. Full scripting language or complex workflow DSL
+
+Basic sequencing and safe rules are valuable. A full mini-language is likely to add complexity faster than value.
 
 ### 2. Cron-style scheduling or background automation
 
-This pushes ButtonFu toward task runner territory and creates platform, lifecycle, and trust complexity. It is not the strongest fit for a sidebar-first extension.
+This pushes ButtonFu toward task-runner territory and adds lifecycle and trust complexity that does not need to be solved first.
 
-### 3. Cloud account sync or hosted button marketplace
+### 3. Full hosted control plane or marketplace
 
-There is not enough evidence yet that ButtonFu needs a service model. Repo-backed packs and import/export should come first.
+A central repository or catalog is worth building soon. A multi-tenant hosted control plane or marketplace should wait until the repository-backed model, governance, and privacy expectations are proven.
 
-### 4. Deeply nested sidebar trees as the first scaling feature
+### 4. Deep nested hierarchy as the first answer to scale
 
-Search, quick-run, favourites, and visibility rules should come before a heavy hierarchy system. Hierarchy may still be useful later, but it is not the best first answer to scale.
+Search, quick-run, ownership metadata, favourites, and visibility rules should come before a heavy tree model.
 
-## Final Recommendation
+### Implementation Directive Summary
 
-If ButtonFu wants the next set of features to provide real user value, the extension should prioritize becoming:
+If a future implementation agent is asked to execute this plan, the intended sequence is:
 
-- portable
-- searchable
-- composable
-- context-aware
-- trustworthy after execution
+1. foundation contract and migration design
+2. managed catalog core and file-backed packs
+3. central repository sources and safe update flow
+4. layering, locked fields, local overrides, and governance
+5. discovery, ownership metadata, and onboarding
+6. rich inputs, secret references, prerequisites, visibility rules, and terminal context
+7. workflow buttons, execution status, history, and Copilot expansion
+8. scale, polish, and follow-on features
 
-In practical terms, the best next move is not to add more action types immediately. It is to make the existing action types reusable, discoverable, and workflow-capable.
+The phase gate is part of the plan, not an optional follow-up. After every phase, stop, review the changes from all three required perspectives, fix the accepted findings, validate again, and only then continue.
 
-The most defensible near-term sequence is:
-
-1. repo-backed packs plus import/export
-2. quick-run plus search and favourites
-3. rich token inputs and visibility rules
-4. workflow buttons
-5. execution status and history
-
-That path keeps ButtonFu focused on its strongest identity: fast, user-authored developer automation inside VS Code.
+That sequence keeps ButtonFu focused on its strongest identity: fast developer automation inside VS Code, while making it progressively viable as a team and company platform instead of only a personal launcher.
