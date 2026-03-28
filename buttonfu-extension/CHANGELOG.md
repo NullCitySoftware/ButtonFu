@@ -2,12 +2,19 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.0.9] - 2026-03-28
+
+- Published version mismatch fixed.
+
 ## [1.0.7] - 2026-03-28
 
 ### Fixed
 - Sequential multi-terminal execution now correctly runs all tabs — the final tab's promise was never awaited, causing the second (and any subsequent) tab to silently not execute even when the previous tab completed successfully
 
 ## [1.0.6] - 2026-03-28
+
+### Added
+- Checked-in VS Code launch configuration at `.vscode/launch.json` so pressing F5 from the repository root compiles `buttonfu-extension` and starts an Extension Development Host in one step
 
 ### Changed
 - Development documentation now reflects the checked-in F5 workflow and the VS Code 1.93 minimum required by the current extension typings and shell integration API usage
