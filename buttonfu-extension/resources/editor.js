@@ -413,21 +413,12 @@ function saveButton() {
 
 function deleteCurrentButton() {
     if (currentButton && currentButton.id) {
-        const label = currentButton.name || 'this button';
-        if (!window.confirm('Delete "' + label + '"?')) {
-            return;
-        }
         vscode.postMessage({ type: 'deleteButton', id: currentButton.id });
         closeEditor();
     }
 }
 
 function confirmDelete(id) {
-    const btn = getButton(id);
-    const label = btn?.name || 'this button';
-    if (!window.confirm('Delete "' + label + '"?')) {
-        return;
-    }
     vscode.postMessage({ type: 'deleteButton', id: id });
 }
 

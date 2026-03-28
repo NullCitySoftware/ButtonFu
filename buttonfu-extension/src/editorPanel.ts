@@ -1456,13 +1456,13 @@ export class ButtonEditorPanel {
                 <span id="editorTitle">Edit Button</span>
             </h2>
             <div class="actions">
-                <button class="btn btn-danger" id="deleteBtn">
+                <button type="button" class="btn btn-danger" id="deleteBtn">
                     <span class="codicon codicon-trash"></span> Delete
                 </button>
-                <button class="btn btn-primary" id="saveBtn">
+                <button type="button" class="btn btn-primary" id="saveBtn">
                     <span class="codicon codicon-save"></span> Save
                 </button>
-                <button class="btn btn-secondary" id="cancelBtn">
+                <button type="button" class="btn btn-secondary" id="cancelBtn">
                     <span class="codicon codicon-chrome-close"></span> Cancel
                 </button>
             </div>

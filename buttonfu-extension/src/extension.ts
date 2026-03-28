@@ -141,17 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand('buttonfu.deleteButton', async (item: any) => {
             if (item?.buttonId) {
-                const button = store.getButton(item.buttonId);
-                if (button) {
-                    const confirm = await vscode.window.showWarningMessage(
-                        `Delete button "${button.name}"?`,
-                        { modal: true },
-                        'Delete'
-                    );
-                    if (confirm === 'Delete') {
-                        await store.deleteButton(item.buttonId);
-                    }
-                }
+                await store.deleteButton(item.buttonId);
             }
         })
     );
