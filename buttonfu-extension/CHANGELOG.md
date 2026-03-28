@@ -2,6 +2,11 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.0.7] - 2026-03-28
+
+### Fixed
+- Sequential multi-terminal execution now correctly runs all tabs — the final tab's promise was never awaited, causing the second (and any subsequent) tab to silently not execute even when the previous tab completed successfully
+
 ## [1.0.6] - 2026-03-28
 
 ### Changed

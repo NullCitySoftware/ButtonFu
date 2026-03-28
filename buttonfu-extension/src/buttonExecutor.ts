@@ -378,6 +378,7 @@ export class ButtonExecutor {
                 }
                 previousPromise = this.runTerminalTabAndWait(button, tab);
             }
+            await previousPromise;
         } else {
             // All independent: fire all terminals at once
             for (const tab of tabs) {

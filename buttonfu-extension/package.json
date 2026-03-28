@@ -2,7 +2,7 @@
   "name": "buttonfu",
   "displayName": "ButtonFu",
   "description": "Customizable buttons for VS Code - execute terminal commands, palette actions, tasks, and Copilot prompts with a single click",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "publisher": "nullcity",
   "icon": "resources/icon.png",
   "repository": {
