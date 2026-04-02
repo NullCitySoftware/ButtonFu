@@ -2,6 +2,11 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.1.1] - 
+
+### Added 
+
+
 ## [1.1.0] - 2026-04-02
 
 ### Added 
