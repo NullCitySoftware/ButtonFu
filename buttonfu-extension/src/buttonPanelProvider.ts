@@ -97,6 +97,9 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
                 case 'addButton':
                     await vscode.commands.executeCommand('buttonfu.addButton');
                     break;
+                case 'openEditorTab':
+                    await vscode.commands.executeCommand('buttonfu.openEditorOnTab', msg.tab);
+                    break;
             }
         });
     }
@@ -199,6 +202,9 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
 
         /* ── Locality section divider ───────────────────── */
         .locality-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
@@ -210,6 +216,19 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
             margin: 10px 0 6px;
         }
         .locality-header:first-child { margin-top: 0; }
+        .locality-cog-btn {
+            background: transparent;
+            border: none;
+            color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-descriptionForeground));
+            cursor: pointer;
+            padding: 0 2px;
+            border-radius: 3px;
+            line-height: 1;
+            font-size: 13px;
+            opacity: 0.6;
+            flex-shrink: 0;
+        }
+        .locality-cog-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 
         /* ── Category label ─────────────────────────────── */
         .category-label {
@@ -350,6 +369,8 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         document.addEventListener('click', e => {
             const exec = e.target.closest('[data-execute]');
             if (exec) { vscode.postMessage({ type: 'execute', id: exec.dataset.execute }); return; }
+            const cogBtn = e.target.closest('[data-open-editor-tab]');
+            if (cogBtn) { vscode.postMessage({ type: 'openEditorTab', tab: cogBtn.dataset.openEditorTab }); return; }
             if (e.target.closest('#addBtn')) {
                 vscode.postMessage({ type: 'addButton' });
                 return;
@@ -376,16 +397,16 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         const wsLabel = workspaceName ? `Workspace [${workspaceName}]` : 'Workspace';
 
         if (globals.length > 0) {
-            html += `<div class="locality-header">Global</div>`;
+            html += `<div class="locality-header"><span>Global</span><button class="locality-cog-btn" data-open-editor-tab="global" title="Open editor \u2014 Global tab"><span class="codicon codicon-settings-gear"></span></button></div>`;
             html += this._renderGrouped(globals, columns);
         }
 
         if (hasWorkspace) {
             if (locals.length > 0) {
-                html += `<div class="locality-header">${escapeHtml(wsLabel)}</div>`;
+                html += `<div class="locality-header"><span>${escapeHtml(wsLabel)}</span><button class="locality-cog-btn" data-open-editor-tab="local" title="Open editor \u2014 Workspace tab"><span class="codicon codicon-settings-gear"></span></button></div>`;
                 html += this._renderGrouped(locals, columns);
             } else if (globals.length > 0) {
-                html += `<div class="locality-header">${escapeHtml(wsLabel)}</div>`;
+                html += `<div class="locality-header"><span>${escapeHtml(wsLabel)}</span><button class="locality-cog-btn" data-open-editor-tab="local" title="Open editor \u2014 Workspace tab"><span class="codicon codicon-settings-gear"></span></button></div>`;
                 html += `<div style="font-size:11px;color:var(--vscode-descriptionForeground);padding:4px 2px 8px;">No workspace buttons. Add one via the editor.</div>`;
             }
         }

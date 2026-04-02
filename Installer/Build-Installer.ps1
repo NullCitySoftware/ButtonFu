@@ -39,18 +39,8 @@ function Write-TextValue([string]$Path, [string]$Value) {
     Set-Content -Path $Path -Value $Value -NoNewline
 }
 
-$BaseVersion = Read-TextValue $VersionBaseFile "1.0"
-$BuildMoniker = Read-TextValue $VersionMonikerFile ""
-$BuildNumberRaw = Read-TextValue $VersionBuildFile "0"
-[int]$BuildNumber = 0
-if (-not [int]::TryParse($BuildNumberRaw, [ref]$BuildNumber)) {
-    $BuildNumber = 0
-}
-$BuildNumber++
-Write-TextValue $VersionBuildFile $BuildNumber
-
-$NumericVersion = "$BaseVersion.$BuildNumber"
-$Version = if ([string]::IsNullOrWhiteSpace($BuildMoniker)) { $NumericVersion } else { "$NumericVersion-$BuildMoniker" }
+# Version is read from package.json — use 'npm version patch/minor/major --no-git-tag-version' to bump before publishing
+$Version = (Get-Content $ExtensionPackageJson -Raw | ConvertFrom-Json).version
 
 # Find Inno Setup compiler
 $InnoSetupPaths = @(
@@ -76,7 +66,6 @@ if (-not $ISCC) {
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "ButtonFu Installer Build" -ForegroundColor Cyan
 Write-Host "Version: $Version" -ForegroundColor Cyan
-Write-Host "Build Number: $BuildNumber" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -97,11 +86,6 @@ Write-Host ""
 
 # Step 2: Build VS Code extension
 Write-Host "[2/3] Building VS Code extension..." -ForegroundColor Yellow
-
-# Update extension package version
-$packageJson = Get-Content $ExtensionPackageJson -Raw
-$packageJson = $packageJson -replace '"version"\s*:\s*"[^"]+"', ('"version": "' + $Version + '"')
-Set-Content -Path $ExtensionPackageJson -Value $packageJson -NoNewline
 
 # Install npm dependencies if needed
 Push-Location $ExtensionDir

@@ -116,6 +116,19 @@ export class ButtonEditorPanel {
         }
     }
 
+    /** Open the editor and switch to a specific tab (e.g. 'global', 'local', 'options') */
+    public static createOrShowWithTab(store: ButtonStore, extensionUri: vscode.Uri, tab: string): void {
+        ButtonEditorPanel.createOrShow(store, extensionUri);
+        if (ButtonEditorPanel.currentPanel) {
+            setTimeout(() => {
+                ButtonEditorPanel.currentPanel?.panel.webview.postMessage({
+                    type: 'switchTab',
+                    tab
+                });
+            }, 300);
+        }
+    }
+
     private dispose(): void {
         ButtonEditorPanel.currentPanel = undefined;
         this.panel.dispose();
@@ -161,9 +174,20 @@ export class ButtonEditorPanel {
                 await this.store.saveButton(btn as ButtonConfig);
                 break;
             }
-            case 'deleteButton':
-                await this.store.deleteButton(message.id);
+            case 'deleteButton': {
+                const btn = this.store.getButton(message.id as string);
+                const name = btn?.name || 'this button';
+                const answer = await vscode.window.showWarningMessage(
+                    `Delete "${name}"? This cannot be undone.`,
+                    { modal: true },
+                    'Delete'
+                );
+                if (answer === 'Delete') {
+                    await this.store.deleteButton(message.id as string);
+                    this.panel.webview.postMessage({ type: 'closeEditorOverlay' });
+                }
                 break;
+            }
             case 'getTasks': {
                 const tasks = await vscode.tasks.fetchTasks();
                 const taskNames = tasks.map(t => {

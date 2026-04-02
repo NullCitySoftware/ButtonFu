@@ -141,8 +141,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand('buttonfu.deleteButton', async (item: any) => {
             if (item?.buttonId) {
-                await store.deleteButton(item.buttonId);
+                const btn = store.getButton(item.buttonId);
+                const name = btn?.name || 'this button';
+                const answer = await vscode.window.showWarningMessage(
+                    `Delete "${name}"? This cannot be undone.`,
+                    { modal: true },
+                    'Delete'
+                );
+                if (answer === 'Delete') {
+                    await store.deleteButton(item.buttonId);
+                }
             }
+        })
+    );
+
+    // Command: Open the button editor on a specific tab
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.openEditorOnTab', (tab: string) => {
+            ButtonEditorPanel.createOrShowWithTab(store, context.extensionUri, tab);
         })
     );
 

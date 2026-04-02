@@ -148,6 +148,14 @@ window.addEventListener('message', (event) => {
             cachedWorkspaceFiles = msg.files || [];
             renderWorkspaceFileList(cachedWorkspaceFiles, document.getElementById('workspaceFileSearch').value);
             break;
+        case 'closeEditorOverlay':
+            closeEditor();
+            break;
+        case 'switchTab': {
+            const targetTab = document.querySelector('.tab[data-tab="' + msg.tab + '"]');
+            if (targetTab) { targetTab.click(); }
+            break;
+        }
     }
 });
 
@@ -414,7 +422,6 @@ function saveButton() {
 function deleteCurrentButton() {
     if (currentButton && currentButton.id) {
         vscode.postMessage({ type: 'deleteButton', id: currentButton.id });
-        closeEditor();
     }
 }
 
