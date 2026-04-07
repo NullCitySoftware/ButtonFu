@@ -67,3 +67,5 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+# Drive.NET workspace artifacts
+.drive-net/

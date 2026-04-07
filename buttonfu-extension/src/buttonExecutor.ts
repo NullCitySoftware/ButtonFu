@@ -5,29 +5,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { ButtonConfig, TerminalTab, SYSTEM_TOKENS } from './types';
 import { detectShellKind, shellEscape, ShellKind } from './utils';
-
-/**
- * Copilot Chat command-sequencing delays (ms).
- *
- * The Chat panel processes commands asynchronously and provides no
- * observable ready-state, so we insert short pauses between steps.
- * Each constant explains why the delay is needed.
- */
-
-/** Wait for the chat panel to become visible after focusing it */
-const DELAY_CHAT_FOCUS_MS = 200;
-/** Wait for the new-chat session to initialise (UI + lazy command registration) */
-const DELAY_NEW_CHAT_MS = 350;
-/** Wait after switching mode — mode change can asynchronously reset the model */
-const DELAY_MODE_CHANGE_MS = 300;
-/** Wait after selecting a model so the UI reflects the change before pasting */
-const DELAY_MODEL_SELECT_MS = 200;
-/** Wait after attaching a file to let the attachment badge render */
-const DELAY_FILE_ATTACH_MS = 100;
-/** Brief pause before pasting to ensure the input box has focus */
-const DELAY_PRE_PASTE_MS = 50;
-/** Wait after pasting before issuing the submit command */
-const DELAY_POST_PASTE_MS = 100;
+import { PromptActionService } from './promptActionService';
 
 /** Snapshot of all resolvable values captured at invocation time */
 export interface TokenSnapshot {
@@ -38,6 +16,7 @@ export interface TokenSnapshot {
  * Executes button actions based on their type.
  */
 export class ButtonExecutor {
+    private readonly promptActions = new PromptActionService();
 
     /** Capture all system token values right now (at button click time) */
     captureSystemTokens(button: ButtonConfig): TokenSnapshot {
@@ -362,14 +341,14 @@ export class ButtonExecutor {
             return;
         }
 
-        const hasAnyDependency = tabs.some(t => t.dependantOnPrevious);
+        const hasAnyDependency = tabs.some(t => t.dependentOnPrevious);
 
         if (hasAnyDependency) {
-            // Mixed sequential/parallel: each tab that is marked dependantOnPrevious waits
+            // Mixed sequential/parallel: each tab that is marked dependentOnPrevious waits
             // for the previous tab to succeed before starting.
             let previousPromise: Promise<boolean> = Promise.resolve(true);
             for (const tab of tabs) {
-                if (tab.dependantOnPrevious) {
+                if (tab.dependentOnPrevious) {
                     const ok = await previousPromise;
                     if (!ok) {
                         vscode.window.showErrorMessage(`ButtonFu: Terminal "${tab.name}" skipped because the previous terminal failed.`);
@@ -516,232 +495,13 @@ export class ButtonExecutor {
 
     /** Send a prompt to Copilot Chat */
     private async executeCopilotCommand(button: ButtonConfig): Promise<void> {
-        // Check that Copilot Chat is installed
-        if (!vscode.extensions.getExtension('GitHub.copilot-chat')) {
-            vscode.window.showErrorMessage('ButtonFu: GitHub Copilot Chat extension is not installed. Please install it to use CopilotCommand buttons.');
-            return;
-        }
-
-        let previousClipboard: string | undefined;
-        try {
-            const availableCommands = new Set(await vscode.commands.getCommands(true));
-
-            const executeFirstAvailable = async (commandIds: string[], ...args: any[]): Promise<string | undefined> => {
-                for (const commandId of commandIds) {
-                    if (!availableCommands.has(commandId)) {
-                        continue;
-                    }
-                    try {
-                        await vscode.commands.executeCommand(commandId, ...args);
-                        return commandId;
-                    } catch {
-                        // try next
-                    }
-                }
-                return undefined;
-            };
-
-            // Focus the chat panel first
-            await executeFirstAvailable([
-                'workbench.panel.chat.view.copilot.focus',
-                'workbench.action.chat.focus',
-                'workbench.action.chat.open'
-            ]);
-            await new Promise(resolve => setTimeout(resolve, DELAY_CHAT_FOCUS_MS));
-
-            // Start a new chat session — try directly (not via pre-filtered list) as
-            // some chat commands are lazily registered after the panel opens.
-            const newChatCmds = [
-                'workbench.action.chat.newChat',
-                'workbench.action.chat.new',
-                'workbench.action.chat.startNewChat',
-                'workbench.action.chat.newSession',
-                'github.copilot.chat.newChat'
-            ];
-            for (const cmd of newChatCmds) {
-                try { await vscode.commands.executeCommand(cmd); break; } catch { /* try next */ }
-            }
-            await new Promise(resolve => setTimeout(resolve, DELAY_NEW_CHAT_MS));
-
-            // Set the mode if specified (mode FIRST — setting mode can reset the model)
-            const mode = button.copilotMode?.toLowerCase().trim();
-            if (mode && ['agent', 'ask', 'edit', 'plan'].includes(mode)) {
-                const modeCommands: Record<string, string[]> = {
-                    'agent': ['workbench.action.chat.setMode.agent', 'workbench.action.chat.openAgent'],
-                    'ask': ['workbench.action.chat.setMode.ask', 'workbench.action.chat.openAsk'],
-                    'edit': ['workbench.action.chat.setMode.edit', 'workbench.action.chat.openEdit'],
-                    'plan': ['workbench.action.chat.setMode.plan', 'workbench.action.chat.openPlan']
-                };
-                
-                let set = await executeFirstAvailable(modeCommands[mode] || []);
-                if (!set) {
-                    set = await executeFirstAvailable([
-                        'workbench.action.chat.setMode',
-                        'workbench.action.chat.changeMode'
-                    ], mode);
-                }
-                // Always wait after mode change — mode can asynchronously reset the model
-                await new Promise(resolve => setTimeout(resolve, DELAY_MODE_CHANGE_MS));
-            }
-
-            // Set the model AFTER mode (mode change may have reset it to default)
-            const model = button.copilotModel?.trim();
-            if (model && model !== 'auto' && model !== '') {
-                await this.trySelectCopilotModel(model, availableCommands, executeFirstAvailable);
-                await new Promise(resolve => setTimeout(resolve, DELAY_MODEL_SELECT_MS));
-            }
-
-            // Attach active file if requested
-            if (button.copilotAttachActiveFile) {
-                const activeEditor = vscode.window.activeTextEditor;
-                if (activeEditor) {
-                    try {
-                        await vscode.commands.executeCommand('workbench.action.chat.attachFile', activeEditor.document.uri);
-                        await new Promise(resolve => setTimeout(resolve, DELAY_FILE_ATTACH_MS));
-                    } catch { /* ignore */ }
-                }
-            }
-
-            // Attach files if specified
-            if (button.copilotAttachFiles && button.copilotAttachFiles.length > 0) {
-                for (const filePath of button.copilotAttachFiles) {
-                    try {
-                        const resolvedPath = this.resolveFilePath(filePath);
-                        if (resolvedPath && fs.existsSync(resolvedPath)) {
-                            const fileUri = vscode.Uri.file(resolvedPath);
-                            await vscode.commands.executeCommand('workbench.action.chat.attachFile', fileUri);
-                            await new Promise(resolve => setTimeout(resolve, DELAY_FILE_ATTACH_MS));
-                        }
-                    } catch {
-                        // Continue with remaining files
-                    }
-                }
-            }
-
-            // Copy prompt to clipboard, paste into chat, then restore previous clipboard
-            try {
-                previousClipboard = await vscode.env.clipboard.readText();
-            } catch { /* ignore — clipboard may be unavailable */ }
-
-            await vscode.env.clipboard.writeText(button.executionText);
-            await executeFirstAvailable([
-                'workbench.action.chat.focusInput',
-                'workbench.panel.chat.view.copilot.focus'
-            ]);
-            await new Promise(resolve => setTimeout(resolve, DELAY_PRE_PASTE_MS));
-            await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
-            await new Promise(resolve => setTimeout(resolve, DELAY_POST_PASTE_MS));
-
-            // Restore the user's clipboard contents
-            if (previousClipboard !== undefined) {
-                try {
-                    await vscode.env.clipboard.writeText(previousClipboard);
-                } catch { /* ignore */ }
-            }
-
-            // Submit
-            await vscode.commands.executeCommand('workbench.action.chat.submit');
-        } catch (err) {
-            console.error('ButtonFu: Failed to execute Copilot command:', err);
-            if (previousClipboard !== undefined) {
-                try {
-                    await vscode.env.clipboard.writeText(previousClipboard);
-                } catch { /* ignore */ }
-            }
-
-            const action = await vscode.window.showWarningMessage(
-                'Could not automatically send to Copilot Chat.',
-                'Copy Prompt'
-            );
-            if (action === 'Copy Prompt') {
-                await vscode.env.clipboard.writeText(button.executionText);
-            }
-        }
-    }
-
-    /** Select a Copilot model */
-    private async trySelectCopilotModel(
-        requestedModel: string,
-        availableCommands: Set<string>,
-        _executeFirstAvailable: (commandIds: string[], ...args: any[]) => Promise<string | undefined>
-    ): Promise<boolean> {
-        if (!requestedModel || requestedModel === 'auto' || requestedModel.trim() === '') {
-            return false;
-        }
-
-        // Try to find via VS Code Language Model API
-        let modelInfo: { vendor: string; id: string; family: string } | undefined;
-        try {
-            const models = await vscode.lm.selectChatModels();
-            const modelLower = requestedModel.toLowerCase();
-            const match = models.find(m =>
-                m.id.toLowerCase() === modelLower ||
-                m.family.toLowerCase() === modelLower
-            );
-            if (match) {
-                modelInfo = { vendor: match.vendor, id: match.id, family: match.family };
-            }
-        } catch {
-            // API not available
-        }
-
-        // Primary path: use changeModel with full { vendor, id, family } object
-        if (modelInfo && availableCommands.has('workbench.action.chat.changeModel')) {
-            try {
-                await vscode.commands.executeCommand('workbench.action.chat.changeModel', {
-                    vendor: modelInfo.vendor,
-                    id: modelInfo.id,
-                    family: modelInfo.family
-                });
-                return true;
-            } catch {
-                // fall through to fallbacks
-            }
-        }
-
-        // Fallback: try various commands with the resolved ID or raw input
-        const modelId = modelInfo?.id ?? requestedModel;
-        const modelCommands = [
-            'workbench.action.chat.changeModel',
-            'workbench.action.chat.selectModel',
-            'workbench.action.chat.setModel'
-        ];
-
-        const argVariants: any[] = [];
-        if (modelInfo) {
-            argVariants.push({ vendor: modelInfo.vendor, id: modelInfo.id, family: modelInfo.family });
-        }
-        argVariants.push(
-            { id: modelId },
-            { modelId: modelId },
-            modelId
-        );
-
-        for (const args of argVariants) {
-            for (const cmd of modelCommands) {
-                if (!availableCommands.has(cmd)) { continue; }
-                try {
-                    await vscode.commands.executeCommand(cmd, args);
-                    return true;
-                } catch {
-                    // try next
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /** Resolve a file path, supporting workspace-relative paths */
-    private resolveFilePath(filePath: string): string | undefined {
-        if (path.isAbsolute(filePath)) {
-            return filePath;
-        }
-        const folders = vscode.workspace.workspaceFolders;
-        if (folders && folders.length > 0) {
-            return path.join(folders[0].uri.fsPath, filePath);
-        }
-        return undefined;
+        await this.promptActions.sendToCopilot({
+            prompt: button.executionText,
+            model: button.copilotModel,
+            mode: button.copilotMode,
+            attachFiles: button.copilotAttachFiles,
+            attachActiveFile: button.copilotAttachActiveFile
+        });
     }
 
     /** Try to get the current git branch using the VS Code Git extension API */
@@ -761,17 +521,38 @@ export class ButtonExecutor {
             }
         } catch { /* fall through to filesystem fallback */ }
 
-        // Fallback: read .git/HEAD directly (only within the workspace folder)
         try {
-            const headFile = path.join(workspacePath, '.git', 'HEAD');
-            const resolved = path.resolve(headFile);
-            if (!resolved.startsWith(path.resolve(workspacePath))) { return ''; }
-            if (!fs.existsSync(resolved)) { return ''; }
-            const head = fs.readFileSync(resolved, 'utf8').trim();
+            const headFile = this.resolveGitHeadFile(workspacePath);
+            if (!headFile || !fs.existsSync(headFile)) { return ''; }
+            const head = fs.readFileSync(headFile, 'utf8').trim();
             const match = head.match(/^ref:\s+refs\/heads\/(.+)$/);
             return match ? match[1] : head.slice(0, 8);
         } catch {
             return '';
         }
+    }
+
+    /** Resolve the HEAD file for normal repos and worktrees. */
+    private resolveGitHeadFile(workspacePath: string): string {
+        const gitPath = path.join(workspacePath, '.git');
+        if (!fs.existsSync(gitPath)) {
+            return '';
+        }
+
+        const stat = fs.statSync(gitPath);
+        if (stat.isDirectory()) {
+            return path.join(gitPath, 'HEAD');
+        }
+        if (!stat.isFile()) {
+            return '';
+        }
+
+        const gitRef = fs.readFileSync(gitPath, 'utf8').trim();
+        const match = gitRef.match(/^gitdir:\s*(.+)$/i);
+        if (!match) {
+            return '';
+        }
+
+        return path.resolve(workspacePath, match[1], 'HEAD');
     }
 }

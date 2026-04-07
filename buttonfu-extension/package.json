@@ -49,6 +49,12 @@
           "type": "webview",
           "id": "buttonfu.buttonsView",
           "name": "Buttons"
+        },
+        {
+          "type": "tree",
+          "id": "buttonfu.notesView",
+          "name": "Notes",
+          "when": "false"
         }
       ]
     },
@@ -84,9 +90,136 @@
         "command": "buttonfu.refreshButtons",
         "title": "Refresh Buttons",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "buttonfu.openNoteEditor",
+        "title": "ButtonFu: Open Note Editor",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "buttonfu.addNote",
+        "title": "ButtonFu: Add Note",
+        "icon": "$(add)"
+      },
+      {
+        "command": "buttonfu.addNoteFolder",
+        "title": "ButtonFu: Add Note Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "buttonfu.openNoteActions",
+        "title": "ButtonFu: Open Note Actions"
+      },
+      {
+        "command": "buttonfu.previewNote",
+        "title": "Preview Note",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "buttonfu.copyNote",
+        "title": "Copy Note to Clipboard",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "buttonfu.insertNote",
+        "title": "Insert Note into Active Editor",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "buttonfu.sendNoteToCopilot",
+        "title": "Send Note to Copilot Chat",
+        "icon": "$(copilot)"
+      },
+      {
+        "command": "buttonfu.editNoteNode",
+        "title": "Edit Note or Folder",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "buttonfu.deleteNoteNode",
+        "title": "Delete Note or Folder",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "buttonfu.refreshNotes",
+        "title": "Refresh Notes",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "buttonfu.moveNoteUp",
+        "title": "Move Note Up",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "buttonfu.moveNoteDown",
+        "title": "Move Note Down",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "buttonfu.moveNoteToFolder",
+        "title": "Move Note To Folder",
+        "icon": "$(folder-opened)"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "buttonfu.openNoteEditor",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.addNote",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.addNoteFolder",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.openNoteActions",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.previewNote",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.copyNote",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.insertNote",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.sendNoteToCopilot",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.editNoteNode",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.deleteNoteNode",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.refreshNotes",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.moveNoteUp",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.moveNoteDown",
+          "when": "config.buttonfu.showNotes"
+        },
+        {
+          "command": "buttonfu.moveNoteToFolder",
+          "when": "config.buttonfu.showNotes"
+        }
+      ],
       "view/title": [
         {
           "command": "buttonfu.openEditor",
@@ -97,9 +230,103 @@
           "command": "buttonfu.refreshButtons",
           "when": "view == buttonfu.buttonsView",
           "group": "navigation@2"
+        },
+        {
+          "command": "buttonfu.openNoteEditor",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "buttonfu.addNote",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "buttonfu.addNoteFolder",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
+          "group": "navigation@3"
+        },
+        {
+          "command": "buttonfu.refreshNotes",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "buttonfu.addNote",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteScopeRoot || viewItem == noteFolder)",
+          "group": "inline@1"
+        },
+        {
+          "command": "buttonfu.addNoteFolder",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteScopeRoot || viewItem == noteFolder)",
+          "group": "inline@2"
+        },
+        {
+          "command": "buttonfu.previewNote",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
+          "group": "inline@1"
+        },
+        {
+          "command": "buttonfu.editNoteNode",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
+          "group": "inline@2"
+        },
+        {
+          "command": "buttonfu.previewNote",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
+          "group": "actions@1"
+        },
+        {
+          "command": "buttonfu.insertNote",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
+          "group": "actions@2"
+        },
+        {
+          "command": "buttonfu.sendNoteToCopilot",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
+          "group": "actions@3"
+        },
+        {
+          "command": "buttonfu.copyNote",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
+          "group": "actions@4"
+        },
+        {
+          "command": "buttonfu.editNoteNode",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
+          "group": "edit@1"
+        },
+        {
+          "command": "buttonfu.moveNoteToFolder",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
+          "group": "move@1"
+        },
+        {
+          "command": "buttonfu.moveNoteUp",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
+          "group": "move@2"
+        },
+        {
+          "command": "buttonfu.moveNoteDown",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
+          "group": "move@3"
+        },
+        {
+          "command": "buttonfu.deleteNoteNode",
+          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
+          "group": "delete@1"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "buttonfu.notesView",
+        "contents": "No notes yet.\n[Add Note](command:buttonfu.addNote)\n[Add Folder](command:buttonfu.addNoteFolder)",
+        "when": "config.buttonfu.showNotes"
+      }
+    ],
     "configuration": {
       "title": "ButtonFu",
       "properties": {
@@ -108,6 +335,18 @@
           "default": [],
           "description": "Global buttons available in all workspaces",
           "scope": "machine"
+        },
+        "buttonfu.globalNotes": {
+          "type": "array",
+          "default": [],
+          "description": "Global notes and folders available in all workspaces",
+          "scope": "machine"
+        },
+        "buttonfu.showNotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Notes section and enable Notes commands.",
+          "scope": "application"
         }
       }
     }
@@ -124,16 +363,18 @@
     "check-webview-js": "node --check resources/editor.js",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
+    "build-tests": "tsc -p tsconfig.test.json",
+    "test": "npm run build-tests && node --test .test-out/test/*.test.js",
     "vsce-package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.93.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
     "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.24.0",
-    "eslint": "^9.0.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^9.39.4",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.7.0"
   },

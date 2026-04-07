@@ -21,7 +21,7 @@ export interface TerminalTab {
     /** Commands to execute (multi-line) */
     commands: string;
     /** When true, wait for the previous terminal to succeed before running this one */
-    dependantOnPrevious: boolean;
+    dependentOnPrevious: boolean;
 }
 
 /** A single button configuration */
@@ -60,6 +60,71 @@ export interface ButtonConfig {
     warnBeforeExecution?: boolean;
     /** User-defined tokens for prompt/command injection */
     userTokens?: UserToken[];
+}
+
+/** The kind of note node stored in the notes tree */
+export type NoteNodeKind = 'folder' | 'note';
+
+/** Content format for note text */
+export type NoteContentFormat = 'PlainText' | 'Markdown';
+
+/** Shared fields for note folders and note items */
+export interface NoteNodeBase {
+    /** Unique identifier */
+    id: string;
+    /** Display name */
+    name: string;
+    /** Global or Local (workspace) */
+    locality: ButtonLocality;
+    /** Parent folder ID, or null for the scope root */
+    parentId: string | null;
+    /** Folder or note */
+    kind: NoteNodeKind;
+    /** Codicon icon name */
+    icon: string;
+    /** Colour for the icon/node */
+    colour: string;
+    /** Sort position within the current parent */
+    sortOrder?: number;
+}
+
+/** A folder in the notes tree */
+export interface NoteFolder extends NoteNodeBase {
+    kind: 'folder';
+}
+
+/** A note item in the notes tree */
+export interface NoteConfig extends NoteNodeBase {
+    kind: 'note';
+    /** Note text content */
+    content: string;
+    /** Plain text or markdown */
+    format: NoteContentFormat;
+    /** Whether prompt actions should resolve tokens before execution */
+    promptEnabled?: boolean;
+    /** For Copilot prompt actions: which model to use */
+    copilotModel: string;
+    /** For Copilot prompt actions: which mode (agent, ask, edit, plan) */
+    copilotMode: string;
+    /** For Copilot prompt actions: files to attach */
+    copilotAttachFiles: string[];
+    /** For Copilot prompt actions: also attach the currently active editor file */
+    copilotAttachActiveFile?: boolean;
+    /** User-defined tokens for prompt injection */
+    userTokens?: UserToken[];
+    /** Last updated timestamp */
+    updatedAt: number;
+}
+
+/** A stored note node */
+export type NoteNode = NoteFolder | NoteConfig;
+
+export const DEFAULT_NOTE_ICON = 'note';
+export const DEFAULT_NOTE_FOLDER_ICON = 'folder';
+export const LEGACY_DEFAULT_NOTE_ICON = 'notebook';
+
+export function getDefaultNoteIcon(kind: NoteNodeKind): string {
+    return kind === 'folder' ? DEFAULT_NOTE_FOLDER_ICON : DEFAULT_NOTE_ICON;
 }
 
 /** Data types available for user tokens */
@@ -139,6 +204,43 @@ export function createDefaultButton(locality: ButtonLocality = 'Global'): Button
         copilotAttachActiveFile: false,
         warnBeforeExecution: false,
         userTokens: []
+    };
+}
+
+/** Creates a new empty note with defaults */
+export function createDefaultNote(locality: ButtonLocality = 'Global', parentId: string | null = null): NoteConfig {
+    return {
+        id: generateId(),
+        name: '',
+        locality,
+        parentId,
+        kind: 'note',
+        icon: DEFAULT_NOTE_ICON,
+        colour: '',
+        sortOrder: undefined,
+        content: '',
+        format: 'PlainText',
+        promptEnabled: false,
+        copilotModel: '',
+        copilotMode: 'agent',
+        copilotAttachFiles: [],
+        copilotAttachActiveFile: false,
+        userTokens: [],
+        updatedAt: Date.now()
+    };
+}
+
+/** Creates a new empty note folder with defaults */
+export function createDefaultNoteFolder(locality: ButtonLocality = 'Global', parentId: string | null = null): NoteFolder {
+    return {
+        id: generateId(),
+        name: '',
+        locality,
+        parentId,
+        kind: 'folder',
+        icon: DEFAULT_NOTE_FOLDER_ICON,
+        colour: '',
+        sortOrder: undefined
     };
 }
 
@@ -246,6 +348,7 @@ export const AVAILABLE_ICONS: { name: string; label: string }[] = [
     { name: 'graph', label: 'Graph' },
     { name: 'settings-gear', label: 'Settings Gear' },
     { name: 'circuit-board', label: 'Circuit Board' },
+    { name: 'note', label: 'Note' },
     { name: 'notebook', label: 'Notebook' },
     { name: 'output', label: 'Output' },
     { name: 'preview', label: 'Preview' },

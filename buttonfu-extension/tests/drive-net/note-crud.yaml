@@ -1,0 +1,301 @@
+# Full create → verify → delete lifecycle for a note in the
+# embedded ButtonFu Note Editor webview panel. Also validates the
+# current sticky-header create flow.
+
+name: Note Editor CRUD
+
+app:
+  process_name: Code
+  window_title_regex: '\[Extension Development Host\]'
+  single_instance: reuse
+
+setup:
+  - tool: interact
+    action: sendKeys
+    comment: Clear any open palette or dialog before starting.
+    args:
+      keys: "Escape"
+    continue_on_failure: true
+    delay_after_ms: 300
+
+tests:
+  # ── Open the Note Editor ──────────────────────────────────────────
+  - name: open note editor from the sidebar
+    steps:
+      - tool: interact
+        action: sendKeys
+        comment: Dismiss any previously-open editor chrome.
+        args:
+          keys: "Escape"
+        continue_on_failure: true
+        delay_after_ms: 300
+
+      - tool: query
+        action: find
+        comment: The embedded Notes gear action should already be visible in the sidebar.
+        args:
+          by: '{"automationId":"openNoteEditorBtn"}'
+          max_results: 20
+          fallback: true
+        expect:
+          success: true
+          count: 1
+        save:
+          open_note_editor_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Open the Note Editor.
+        args:
+          element_id: "${open_note_editor_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1500
+
+      - tool: capture
+        comment: Verify the note editor panel opened.
+        args:
+          output: note-crud-01-editor-opened.png
+        expect:
+          success: true
+
+  # ── Discover editor element structure ─────────────────────────────
+  - name: discover note editor webview tree
+    steps:
+      - tool: query
+        action: find
+        comment: The Note Editor tab should be active.
+        args:
+          by: '{"name":"ButtonFu - Note Editor"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count_gte: 1
+
+      - tool: query
+        action: tree
+        comment: >
+          Dump the tree inside the note editor to discover the webview
+          element hierarchy and verify the content loaded.
+        args:
+          max_depth: 16
+          max_nodes: 1200
+        expect:
+          success: true
+        save:
+          editor_tree_nodes: $.nodeCount
+
+  # ── Verify sticky header buttons ─────────────────────────────────
+  - name: verify create-mode header action buttons
+    steps:
+      - tool: query
+        action: find
+        comment: Find the Save button in the sticky header.
+        args:
+          by: '{"automationId":"saveBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+
+      - tool: query
+        action: find
+        comment: In create mode the secondary header action is Cancel.
+        args:
+          by: '{"automationId":"closeBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+
+  # ── Fill note fields ──────────────────────────────────────────────
+  - name: fill note name and content
+    steps:
+      - tool: query
+        action: find
+        comment: Find the Name text input.
+        args:
+          by: '{"automationId":"nodeName"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          name_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Enter the test note name.
+        args:
+          element_id: "${name_input}"
+          value: "${appSessionId}"
+        expect:
+          success: true
+
+      - tool: query
+        action: find
+        comment: Find the Content textarea (visible for notes, hidden for folders).
+        args:
+          by: '{"automationId":"noteContent"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          content_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Enter test note content.
+        args:
+          element_id: "${content_input}"
+          value: "This note was created by a Drive.NET automation test."
+        expect:
+          success: true
+
+  # ── Save the note ─────────────────────────────────────────────────
+  - name: save the new note
+    steps:
+      - tool: query
+        action: find
+        comment: Re-resolve the Save button inside the Note Editor header.
+        args:
+          by: '{"automationId":"saveBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+        save:
+          save_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Click Save in the sticky header.
+        args:
+          element_id: "${save_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1200
+
+      - tool: capture
+        comment: Screenshot after save.
+        args:
+          output: note-crud-02-saved.png
+        expect:
+          success: true
+
+  # ── Verify the note persisted in the embedded Notes sidebar ───────
+  - name: verify note in embedded notes sidebar
+    steps:
+      - tool: query
+        action: find
+        comment: >
+          The saved note should appear in the embedded Notes sidebar.
+          This confirms the NoteStore round-trip and sidebar refresh.
+        args:
+          name: "${appSessionId}"
+          control_type: Text
+          fallback: true
+          max_results: 50
+        expect:
+          success: true
+          count_gte: 1
+
+  # ── Delete the test note ──────────────────────────────────────────
+  - name: delete test note
+    steps:
+      - tool: query
+        action: find
+        comment: Delete becomes available after the note has been saved.
+        args:
+          by: '{"automationId":"deleteBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+        save:
+          delete_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Click Delete in the sticky header to open the native confirmation dialog.
+        args:
+          element_id: "${delete_btn}"
+          expected_effect: windowOpened
+          effect_timeout_ms: 3000
+        expect:
+          success: true
+        delay_after_ms: 300
+
+      - tool: window
+        action: list
+        comment: The native confirmation dialog should be the topmost window after Delete is clicked.
+        expect:
+          success: true
+        save:
+          delete_confirm_window: $.items[0].handle
+
+      - tool: window
+        action: bringToFront
+        comment: Bring the native confirmation dialog to the foreground before accepting it.
+        args:
+          window_handle: "${delete_confirm_window}"
+        expect:
+          success: true
+        delay_after_ms: 150
+
+      - tool: interact
+        action: sendKeys
+        comment: Confirm the focused native deletion dialog.
+        args:
+          window_handle: "${delete_confirm_window}"
+          keys: "Enter"
+        expect:
+          success: true
+        delay_after_ms: 900
+
+      - tool: capture
+        comment: Final state after deleting the test note.
+        args:
+          output: note-crud-03-deleted.png
+        expect:
+          success: true
+
+  # ── Verify note was removed ───────────────────────────────────────
+  - name: verify note removed from tree
+    steps:
+      - tool: query
+        action: find
+        comment: The test note should no longer appear in the tree.
+        args:
+          name: "${appSessionId}"
+          control_type: Text
+          fallback: true
+          max_results: 50
+        retry:
+          max_attempts: 4
+          delay_ms: 300
+        expect:
+          success: true
+          count: 0
+
+teardown:
+  - tool: interact
+    action: sendKeys
+    comment: Close the editor tab.
+    args:
+      keys: "Ctrl+F4"
+    continue_on_failure: true
+
+finally:
+  - tool: interact
+    action: sendKeys
+    comment: Dismiss any remaining overlay.
+    args:
+      keys: "Escape"
+    continue_on_failure: true

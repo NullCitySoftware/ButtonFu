@@ -30,8 +30,22 @@ export class ButtonStore {
         if (result.type === 'TerminalCommand' && (!result.terminals || result.terminals.length === 0) && result.executionText) {
             result = {
                 ...result,
-                terminals: [{ name: 'Terminal 1', commands: result.executionText, dependantOnPrevious: false }],
+                terminals: [{ name: 'Terminal 1', commands: result.executionText, dependentOnPrevious: false }],
                 executionText: ''
+            };
+        }
+        // Migrate legacy property name dependantOnPrevious → dependentOnPrevious
+        if (result.terminals) {
+            result = {
+                ...result,
+                terminals: result.terminals.map(t => {
+                    const legacy = t as unknown as Record<string, unknown>;
+                    if ('dependantOnPrevious' in legacy && !('dependentOnPrevious' in legacy)) {
+                        const { dependantOnPrevious: _, ...rest } = legacy;
+                        return { ...rest, dependentOnPrevious: Boolean(legacy.dependantOnPrevious) } as typeof t;
+                    }
+                    return t;
+                })
             };
         }
         return result;

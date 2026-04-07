@@ -102,6 +102,36 @@ Multiple fallback command variants are tried for each step to ensure compatibili
 - VS Code theme CSS variables for consistent styling
 - No external runtime dependencies — the extension is self-contained
 
+## Testing Strategy
+
+### Standard Testing (always run)
+
+Run `npm test` from the `buttonfu-extension` directory. This executes:
+
+1. **Type checking** (`tsc --noEmit`)
+2. **Linting** (`eslint`)
+3. **Test compilation** (`tsc -p tsconfig.test.json` → `.test-out/`)
+4. **Node test runner** (`node --test .test-out/test/*.test.js`)
+
+Tests use a custom harness (`src/test/helpers/fakeVscode.ts`) that mocks the entire `vscode` API in-process, and a webview runtime simulator (`src/test/helpers/webviewRuntime.ts`) that uses `vm.createContext()` with `FakeDocument`/`FakeElement`/`FakeWindow` to exercise webview `<script>` blocks outside a browser.
+
+**Limitation:** These tests verify *the extension's own logic* against a simulated VS Code API surface. They do not detect breaking changes in VS Code itself (renamed commands, altered webview lifecycle, changed message delivery semantics, etc.).
+
+### Live Smoke Testing (on request only)
+
+When explicitly requested (e.g. "run a live smoke test"), use the **Drive.NET** MCP tools or CLI to perform end-to-end validation inside a real VS Code Extension Development Host:
+
+1. Launch the Extension Development Host via F5 / the `launch.json` configuration.
+2. Use Drive.NET `session` → `discover` / `connectWait` to attach to the Extension Host process.
+3. Use Drive.NET `query`, `interact`, `assert`, `capture`, and `wait_for` to exercise the real sidebar panel, button editor webview, note editor, colour picker, alpha slider, etc.
+4. `capture` screenshots for visual verification if needed.
+
+**Important caveats:**
+- Drive.NET MCP and CLI may **not be installed** on the development machine. Do **not** assume availability — check first (e.g. `tool_search_tool_regex` for `mcp_drive_net_*` tools, or `Get-Command DriveNet.Cli` in terminal). If unavailable, skip live testing and note the gap.
+- Live smoke tests are **never run by default**. They are only executed when the user explicitly requests them.
+- The standard simulated test suite (`npm test`) must **always** pass before any live smoke test is attempted.
+- Read the relevant Drive.NET SKILL files before performing any live test automation — they contain required patterns for session management, querying, interaction, and assertion.
+
 ## Note to Copilot and AI changes
 
 ALWAYS:
