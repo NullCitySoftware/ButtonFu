@@ -4,6 +4,8 @@ All notable changes to ButtonFu are documented here.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-04-08
+
 ### Added
 - **Notes tree view** — ButtonFu now includes a native Notes view with Global and Workspace scopes, nested folders, markdown/plain-text notes, preview/open, copy, insert-into-editor, send-to-Copilot, edit, move, and delete actions
 - **Prompt-enabled notes** — notes can opt into ButtonFu token resolution for copy/insert/Copilot actions, including note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteFolderPath$`
@@ -23,11 +25,6 @@ All notable changes to ButtonFu are documented here.
 - Consolidated duplicated `getNonce()`, `escapeHtml()`, and `escapeAttribute()` utilities into a single shared module
 - Button colour rendering now validates hex digits and normalises shorthand hex before CSS interpolation
 - JSONC comment stripping in keybindings parsing now respects quoted strings
-
-## [1.1.1] - 
-
-### Added 
-
 
 ## [1.1.0] - 2026-04-02
 

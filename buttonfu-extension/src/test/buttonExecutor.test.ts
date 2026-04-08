@@ -1,8 +1,8 @@
-import assert = require('node:assert/strict');
-import fs = require('fs');
-import os = require('os');
-import path = require('path');
-import test = require('node:test');
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
 import { createDefaultButton } from '../types';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
 

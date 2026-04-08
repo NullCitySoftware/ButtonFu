@@ -87,7 +87,7 @@ function registerButtonCommands(context: vscode.ExtensionContext): void {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     console.log(`ButtonFu extension active | v${buildInfo.version} #${buildInfo.buildNumber} @ ${buildInfo.buildTimeIso}`);
 
-    await initializeOptionDefaults(context.globalState);
+    const optionDefaultsPromise = initializeOptionDefaults(context.globalState);
 
     // Initialise core services
     store = new ButtonStore(context);
@@ -388,6 +388,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await noteActionService.moveNodeToFolder(arg);
         })
     );
+
+    await optionDefaultsPromise;
 }
 
 export function deactivate() {

@@ -41,7 +41,8 @@ export class ButtonStore {
                 terminals: result.terminals.map(t => {
                     const legacy = t as unknown as Record<string, unknown>;
                     if ('dependantOnPrevious' in legacy && !('dependentOnPrevious' in legacy)) {
-                        const { dependantOnPrevious: _, ...rest } = legacy;
+                        const rest = { ...legacy };
+                        delete rest.dependantOnPrevious;
                         return { ...rest, dependentOnPrevious: Boolean(legacy.dependantOnPrevious) } as typeof t;
                     }
                     return t;

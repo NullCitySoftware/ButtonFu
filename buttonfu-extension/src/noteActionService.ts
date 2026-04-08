@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ButtonLocality, NoteConfig, NoteNode, NoteFolder, getDefaultNoteIcon } from './types';
+import { ButtonLocality, NoteConfig, NoteFolder, getDefaultNoteIcon } from './types';
 import {
     PromptActionService,
     PromptTokenAlias,

@@ -1,5 +1,5 @@
-import assert = require('node:assert/strict');
-import vm = require('node:vm');
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
 
 type Listener = (event: any) => void;
 

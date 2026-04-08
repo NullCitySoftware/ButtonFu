@@ -1,5 +1,7 @@
-import Module = require('module');
-import path = require('path');
+import Module from 'node:module';
+import path from 'node:path';
+
+const runtimeRequire = Module.createRequire(__filename);
 
 type Listener<T> = (event: T) => void;
 type CommandHandler = (...args: any[]) => unknown;
@@ -542,8 +544,8 @@ export function loadWithPatchedVscode<T>(modulePath: string, vscodeMock: any, ov
     };
 
     try {
-        delete require.cache[modulePath];
-        return require(modulePath) as T;
+        delete runtimeRequire.cache[modulePath];
+        return runtimeRequire(modulePath) as T;
     } finally {
         (Module as any)._load = originalLoad;
     }

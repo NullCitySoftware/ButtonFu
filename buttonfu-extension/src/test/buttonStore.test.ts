@@ -1,6 +1,6 @@
-import assert = require('node:assert/strict');
-import path = require('path');
-import test = require('node:test');
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import test from 'node:test';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
 
 function createStore() {

@@ -1,18 +1,13 @@
 .vscode/**
 src/**
-<<<<<<< HEAD
+.test-out/**
 docs/**
 out/**/*.map
-esbuild.js
-eslint.config.mjs
-out/**/*.map
-scripts/**
-docs/**
-out/**/*.map
-esbuild.js
 esbuild.js
 eslint.config.cjs
->>>>>>> b61b45f (Add Notes feature, various bug fixes [WIP])
+eslint.config.mjs
+scripts/**
+tsconfig.test.json
 tsconfig.json
 *.esproj
 .gitignore
