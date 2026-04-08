@@ -4,6 +4,11 @@ All notable changes to ButtonFu are documented here.
 
 ## [Unreleased]
 
+## [1.1.2] - 
+
+### Added 
+
+
 ## [1.1.1] - 2026-04-08
 
 ### Added
@@ -14,13 +19,7 @@ All notable changes to ButtonFu are documented here.
 - **Show Notes option** — the Options page now includes a `Show Notes` toggle that hides or reveals the Notes view while preserving stored note data
 
 ### Fixed
-- Notes dragged to a different scope root now persist their locality change correctly
-- Note editor store subscriptions are now disposed correctly when the panel closes
-- Stale tracked note preview URIs are removed after note deletion
-- Workspace-scoped note edits no longer rewrite the global notes setting
 - Copilot prompt submission now restores the clipboard after successful sends and resolves attached files correctly in multi-root workspaces
-- Add Note and Add Folder now prompt for the target scope when launched without a tree selection, and Move can switch notes between Global and Workspace scopes
-- The Buttons panel has been restored to the previous Global and Workspace section layout while keeping the Notes view and title-bar actions in place
 - Fixed typo: renamed `dependantOnPrevious` to `dependentOnPrevious` in terminal tab data and UI label
 - Consolidated duplicated `getNonce()`, `escapeHtml()`, and `escapeAttribute()` utilities into a single shared module
 - Button colour rendering now validates hex digits and normalises shorthand hex before CSS interpolation

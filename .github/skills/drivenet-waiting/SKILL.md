@@ -26,6 +26,7 @@ Wait for a UI condition using polling or event-based detection depending on the 
 | `path` | string | No | - | Hierarchical selector path for selector-based waits. |
 | `matchIndex` | int | No | - | 1-based match position after selector filtering. |
 | `windowHandle` | string | No | - | Window handle filter for `windowOpened` and `windowClosed`. |
+| `ownerHandle` | string | No | - | Owner window handle filter for `windowOpened`/`windowClosed`. Matches popup/flyout windows owned by the specified handle. |
 | `elementId` | string | No | - | Existing element ID for state-based waits. |
 | `propertyName` | string | No | - | Property to watch for `propertyChanged`. |
 | `expectedValue` | string | No | - | Expected value for `textEquals`, optional for `propertyChanged`. |
@@ -43,8 +44,8 @@ Wait for a UI condition using polling or event-based detection depending on the 
 | `textEquals` | Element text equals the expected value | `elementId`, `expectedValue` |
 | `elementEnabled` | Element becomes enabled | `elementId` |
 | `elementVisible` | Element becomes visible | `elementId` |
-| `windowOpened` | A new matching window opens | Optional selectors or `windowHandle` |
-| `windowClosed` | A matching window closes | Optional selectors or `windowHandle` |
+| `windowOpened` | A new matching window opens | Optional selectors, `windowHandle`, or `ownerHandle` |
+| `windowClosed` | A matching window closes | Optional selectors, `windowHandle`, or `ownerHandle` |
 | `structureChanged` | Any UI tree structure change | None |
 | `childAppeared` | Matching child appears under a parent element | `elementId` plus a selector for the child |
 | `childRemoved` | Matching child disappears from a parent element | `elementId` plus a selector for the child |
@@ -77,6 +78,7 @@ wait_for sessionId="..." condition="textEquals" elementId="e_status" expectedVal
 wait_for sessionId="..." condition="elementEnabled" elementId="e_btn1" timeoutMs=10000
 wait_for sessionId="..." condition="windowOpened" name="Preferences" timeoutMs=5000
 wait_for sessionId="..." condition="windowClosed" windowHandle="0x2A" timeoutMs=5000
+wait_for sessionId="..." condition="windowOpened" ownerHandle="0x1A4F" timeoutMs=5000
 wait_for sessionId="..." condition="propertyChanged" elementId="e_prog" propertyName="value"
 wait_for sessionId="..." condition="elementRemoved" elementId="e_spinner"
 wait_for sessionId="..." condition="structureChanged" timeoutMs=5000

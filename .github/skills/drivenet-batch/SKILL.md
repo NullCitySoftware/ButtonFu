@@ -195,6 +195,17 @@ If an `interact` or `wait_for` step causes the target process to exit, the batch
 
 When a batch response includes `processExited: true`, do not retry the dead session. Call `session status` with the same `sessionId` to retrieve the durable `crashEvidence` block, then relaunch or `reconnect` only after you have captured the failure context.
 
+Wait steps support `save` to capture result fields into variables for later steps, for example saving the handle of a newly opened popup window:
+
+```json
+{
+  "tool": "wait_for", "condition": "windowOpened", "ownerHandle": "${mainWindow}",
+  "save": { "popupHandle": "changedWindow.windowHandle" }
+}
+```
+
+Wait steps also support `ownerHandle` to filter `windowOpened`/`windowClosed` to popup or flyout windows owned by a specific parent.
+
 ### Assert Steps
 
 Use `assert` steps when the workflow should fail on an unmet UI expectation instead of just capturing state for later inspection.

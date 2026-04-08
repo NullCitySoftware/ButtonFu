@@ -129,6 +129,19 @@ For held-button pickers, prefer resolving a stable helper-side target first, the
 
 For `wait_for`, state conditions such as `elementEnabled`, `elementVisible`, `textEquals`, and `propertyChanged` require `args.element_id`. If the UI replaces the element instance during a refresh, prefer a selector-based `query find` or `query resolve` step with `retry` so the suite reacquires the live element instead of polling a stale id.
 
+`wait_for` steps support `save` to capture result fields into variables, for example capturing the handle of a newly opened popup window:
+
+```yaml
+- tool: wait_for
+  args:
+    condition: windowOpened
+    owner_handle: "${main_window}"
+  save:
+    popup_handle: $.changedWindow.windowHandle
+```
+
+The `owner_handle` arg filters `windowOpened`/`windowClosed` to popup or flyout windows owned by the specified parent handle.
+
 ### Cross-Session Step Targeting
 
 When a helper uses `connect: true`, later `query`, `interact`, and `wait_for` steps can target that helper session explicitly:
