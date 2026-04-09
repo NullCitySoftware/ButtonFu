@@ -147,6 +147,7 @@ export interface FakeVscodeHarness {
     setExternalCommandHandler(command: string, handler: CommandHandler): void;
     setClipboardText(text: string): void;
     setWorkspaceFolders(folders: Array<{ name: string; fsPath: string }>, options?: { name?: string; fireEvent?: boolean }): void;
+    setWorkspaceTrust(isTrusted: boolean): void;
     setActiveTextEditor(options?: {
         selectionCount?: number;
         selectedText?: string;
@@ -202,6 +203,7 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
     const defaultWorkspaceRoot = createUri(path.resolve(process.cwd(), 'test-workspace'));
     let currentWorkspaceFolders = [{ name: 'TestWorkspace', uri: defaultWorkspaceRoot }];
     let currentWorkspaceName = 'TestWorkspace';
+    let currentWorkspaceTrusted = true;
     let clipboardText = '';
 
     const vscode = {
@@ -287,6 +289,9 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
             },
             get name() {
                 return currentWorkspaceName;
+            },
+            get isTrusted() {
+                return currentWorkspaceTrusted;
             },
             getConfiguration: (section?: string) => ({
                 get: <T>(key: string, defaultValue?: T): T => {
@@ -505,6 +510,9 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
             if (options?.fireEvent !== false) {
                 workspaceFoldersEmitter.fire();
             }
+        },
+        setWorkspaceTrust(isTrusted: boolean): void {
+            currentWorkspaceTrusted = isTrusted;
         },
         setActiveTextEditor(options): any {
             const workspaceRoot = currentWorkspaceFolders[0]?.uri ?? defaultWorkspaceRoot;

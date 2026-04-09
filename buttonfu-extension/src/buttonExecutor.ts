@@ -521,6 +521,10 @@ export class ButtonExecutor {
             }
         } catch { /* fall through to filesystem fallback */ }
 
+        if (!vscode.workspace.isTrusted) {
+            return '';
+        }
+
         try {
             const headFile = this.resolveGitHeadFile(workspacePath);
             if (!headFile || !fs.existsSync(headFile)) { return ''; }
@@ -541,7 +545,8 @@ export class ButtonExecutor {
 
         const stat = fs.statSync(gitPath);
         if (stat.isDirectory()) {
-            return path.join(gitPath, 'HEAD');
+            const headFile = path.resolve(gitPath, 'HEAD');
+            return this.isSupportedGitHeadFile(headFile) ? headFile : '';
         }
         if (!stat.isFile()) {
             return '';
@@ -553,6 +558,13 @@ export class ButtonExecutor {
             return '';
         }
 
-        return path.resolve(workspacePath, match[1], 'HEAD');
+        const headFile = path.resolve(workspacePath, match[1], 'HEAD');
+        return this.isSupportedGitHeadFile(headFile) ? headFile : '';
+    }
+
+    private isSupportedGitHeadFile(headFile: string): boolean {
+        const normalized = path.resolve(headFile).replace(/\\/g, '/');
+        return /\/\.git\/HEAD$/i.test(normalized)
+            || /\/\.git\/(?:worktrees|modules)\/.+\/HEAD$/i.test(normalized);
     }
 }

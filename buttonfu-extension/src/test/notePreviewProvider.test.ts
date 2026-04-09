@@ -40,7 +40,10 @@ test('NotePreviewProvider returns content and refreshes tracked notes', async ()
     assert.ok(refreshed.every((entry) => entry === uri.toString()));
     assert.equal(provider.provideTextDocumentContent(uri), '# Second');
 
+    const refreshCountBeforeDelete = refreshed.length;
     await store.deleteNode(saved.id);
+    assert.equal(refreshed.length, refreshCountBeforeDelete + 1);
+    assert.equal(refreshed.at(-1), uri.toString());
     assert.equal(provider.provideTextDocumentContent(uri), 'This note no longer exists.');
 });
 

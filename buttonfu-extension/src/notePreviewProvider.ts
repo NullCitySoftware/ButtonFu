@@ -47,6 +47,7 @@ export class NotePreviewProvider implements vscode.TextDocumentContentProvider {
             if (this.store.getNote(noteId)) {
                 this._onDidChange.fire(uri);
             } else {
+                this._onDidChange.fire(uri);
                 this.trackedUris.delete(noteId);
             }
         }

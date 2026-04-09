@@ -1,8 +1,0 @@
-{
-  "servers": {
-    "Drive.NET": {
-      "type": "stdio",
-      "command": "C:\\Users\\BootBlock\\AppData\\Local\\DriveNet\\DriveNet.Server.exe"
-    }
-  }
-}

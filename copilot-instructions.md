@@ -106,12 +106,13 @@ Multiple fallback command variants are tried for each step to ensure compatibili
 
 ### Standard Testing (always run)
 
-Run `npm test` from the `buttonfu-extension` directory. This executes:
+Run `npm test` from the `buttonfu-extension` directory. npm runs the `pretest` hook first, then the test script itself. The full sequence is:
 
-1. **Type checking** (`tsc --noEmit`)
-2. **Linting** (`eslint`)
-3. **Test compilation** (`tsc -p tsconfig.test.json` → `.test-out/`)
-4. **Node test runner** (`node --test .test-out/test/*.test.js`)
+1. **Compile prep** via `pretest`
+2. **Type checking + webview JS parse check + extension build** via `compile` (`npm run check-types`, `npm run check-webview-js`, `node esbuild.js`)
+3. **Linting** (`eslint src`)
+4. **Test compilation** (`tsc -p tsconfig.test.json` → `.test-out/`)
+5. **Node test runner** (`node --test .test-out/test/*.test.js`)
 
 Tests use a custom harness (`src/test/helpers/fakeVscode.ts`) that mocks the entire `vscode` API in-process, and a webview runtime simulator (`src/test/helpers/webviewRuntime.ts`) that uses `vm.createContext()` with `FakeDocument`/`FakeElement`/`FakeWindow` to exercise webview `<script>` blocks outside a browser.
 
@@ -130,7 +131,7 @@ When explicitly requested (e.g. "run a live smoke test"), use the **Drive.NET** 
 - Drive.NET MCP and CLI may **not be installed** on the development machine. Do **not** assume availability — check first (e.g. `tool_search_tool_regex` for `mcp_drive_net_*` tools, or `Get-Command DriveNet.Cli` in terminal). If unavailable, skip live testing and note the gap.
 - Live smoke tests are **never run by default**. They are only executed when the user explicitly requests them.
 - The standard simulated test suite (`npm test`) must **always** pass before any live smoke test is attempted.
-- Read the relevant Drive.NET SKILL files before performing any live test automation — they contain required patterns for session management, querying, interaction, and assertion.
+- Review the checked-in Drive.NET manifests under `buttonfu-extension/tests/drive-net` before extending live smoke coverage so new flows stay aligned with the existing suites.
 
 ## Note to Copilot and AI changes
 
