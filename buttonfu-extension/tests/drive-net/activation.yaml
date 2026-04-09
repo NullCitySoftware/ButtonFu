@@ -1,0 +1,135 @@
+# Verifies that the ButtonFu extension activates correctly and the
+# sidebar panel renders inside the Extension Development Host.
+
+name: Extension Activation & Sidebar
+
+app:
+  process_name: Code
+  window_title_regex: '\[Extension Development Host\]'
+  single_instance: reuse
+
+tests:
+  - name: capture baseline state
+    steps:
+      - tool: capture
+        comment: Record the starting state of the Extension Development Host.
+        args:
+          output: activation-01-initial.png
+        expect:
+          success: true
+
+  - name: open ButtonFu sidebar panel
+    steps:
+      - tool: query
+        action: find
+        comment: Locate the ButtonFu activity bar icon.
+        args:
+          name: ButtonFu
+          control_type: TabItem
+          fallback: true
+          max_results: 10
+        expect:
+          success: true
+          count_gte: 1
+        retry:
+          max_attempts: 5
+          delay_ms: 300
+        save:
+          buttonfu_icon: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Click the activity bar icon to reveal the sidebar.
+        args:
+          element_id: "${buttonfu_icon}"
+        expect:
+          success: true
+        delay_after_ms: 1200
+
+      - tool: capture
+        comment: Capture the sidebar with the Buttons panel visible.
+        args:
+          output: activation-02-sidebar-open.png
+        expect:
+          success: true
+
+  - name: verify sidebar webview loaded
+    steps:
+      - tool: query
+        action: tree
+        comment: >
+          Dump the accessible tree rooted at the sidebar to discover the
+          webview element structure.  This aids selector development for
+          the button-crud and note-crud suites.
+        args:
+          max_depth: 14
+          max_nodes: 800
+        expect:
+          success: true
+        save:
+          sidebar_node_count: $.nodeCount
+
+  - name: verify embedded sidebar sections
+    steps:
+      - tool: query
+        action: find
+        comment: The workspace scope header should remain visible in the embedded sidebar.
+        args:
+          by: '{"name":"WORKSPACE","controlType":"Text"}'
+          max_results: 50
+          fallback: true
+        expect:
+          success: true
+          count: 1
+
+      - tool: query
+        action: find
+        comment: The embedded Notes edit action should be visible below the button scopes.
+        args:
+          by: '{"automationId":"openNoteEditorBtn"}'
+          max_results: 20
+          fallback: true
+        expect:
+          success: true
+          count: 1
+
+      - tool: query
+        action: find
+        comment: Workspace Notes should be visible even when empty.
+        args:
+          by: '{"name":"WORKSPACE NOTES","controlType":"Text"}'
+          max_results: 50
+          fallback: true
+        expect:
+          success: true
+          count: 1
+
+      - tool: query
+        action: find
+        comment: The footer Add Button action should still be exposed.
+        args:
+          by: '{"automationId":"addBtn"}'
+          max_results: 20
+          fallback: true
+        expect:
+          success: true
+          count: 1
+
+      - tool: query
+        action: find
+        comment: The Notes add action should be present in the embedded section header.
+        args:
+          by: '{"automationId":"addNoteBtn"}'
+          max_results: 20
+          fallback: true
+        expect:
+          success: true
+          count: 1
+
+finally:
+  - tool: interact
+    action: sendKeys
+    comment: Dismiss any leftover overlay.
+    args:
+      keys: "Escape"
+    continue_on_failure: true

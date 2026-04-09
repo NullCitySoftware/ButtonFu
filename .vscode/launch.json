@@ -26,6 +26,26 @@
         "${workspaceFolder}/buttonfu-extension/out/**/*.js"
       ],
       "preLaunchTask": "npm: watch - buttonfu-extension"
+    },
+    {
+      "name": "Run ButtonFu Extension (Isolated Smoke Test)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/buttonfu-extension",
+        "--user-data-dir=${workspaceFolder}/.drive-net/vscode-user-data",
+        "--extensions-dir=${workspaceFolder}/.drive-net/vscode-extensions",
+        "--new-window",
+        "--add",
+        "${workspaceFolder}",
+        "--disable-updates",
+        "--skip-release-notes"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/buttonfu-extension/out/**/*.js"
+      ],
+      "preLaunchTask": "npm: compile - buttonfu-extension"
     }
   ]
 }

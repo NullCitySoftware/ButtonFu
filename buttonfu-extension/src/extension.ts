@@ -5,10 +5,19 @@ import { ButtonPanelProvider } from './buttonPanelProvider';
 import { ButtonEditorPanel } from './editorPanel';
 import { TokenInputPanel } from './tokenInputPanel';
 import { buildInfo } from './buildInfo';
+import { ButtonLocality } from './types';
+import { NoteStore } from './noteStore';
+import { NoteTreeElement, NoteTreeProvider } from './noteTreeProvider';
+import { NotePreviewProvider } from './notePreviewProvider';
+import { NoteActionService } from './noteActionService';
+import { NoteEditorPanel } from './noteEditorPanel';
 
 let store: ButtonStore;
 let executor: ButtonExecutor;
 let panelProvider: ButtonPanelProvider;
+let noteStore: NoteStore;
+let noteTreeProvider: NoteTreeProvider;
+let noteActionService: NoteActionService;
 const buttonCommandDisposables = new Map<string, vscode.Disposable>();
 
 async function initializeOptionDefaults(globalState: vscode.Memento): Promise<void> {
@@ -78,11 +87,16 @@ function registerButtonCommands(context: vscode.ExtensionContext): void {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     console.log(`ButtonFu extension active | v${buildInfo.version} #${buildInfo.buildNumber} @ ${buildInfo.buildTimeIso}`);
 
-    await initializeOptionDefaults(context.globalState);
+    const optionDefaultsPromise = initializeOptionDefaults(context.globalState);
 
     // Initialise core services
     store = new ButtonStore(context);
     executor = new ButtonExecutor();
+    noteStore = new NoteStore(context);
+
+    const notePreviewProvider = new NotePreviewProvider(noteStore);
+    noteTreeProvider = new NoteTreeProvider(noteStore);
+    noteActionService = new NoteActionService(noteStore, context.extensionUri, notePreviewProvider);
 
     // Register dynamic commands for all existing buttons
     registerButtonCommands(context);
@@ -91,15 +105,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     store.onDidChange(() => registerButtonCommands(context));
 
     // Register the sidebar webview provider
-    panelProvider = new ButtonPanelProvider(context.extensionUri, store, context.globalState);
+    panelProvider = new ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
     ButtonEditorPanel.configure(context.globalState, () => panelProvider.refresh());
+    (NoteEditorPanel as typeof NoteEditorPanel & { configure?: (globalState: vscode.Memento) => void }).configure?.(context.globalState);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(ButtonPanelProvider.viewType, panelProvider)
+    );
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(NotePreviewProvider.scheme, notePreviewProvider)
+    );
+    context.subscriptions.push(
+        vscode.window.createTreeView(NoteTreeProvider.viewType, {
+            treeDataProvider: noteTreeProvider,
+            dragAndDropController: noteTreeProvider,
+            showCollapseAll: true
+        })
     );
 
     // Refresh sidebar when workspace folders change (updates the workspace name label)
     context.subscriptions.push(
-        vscode.workspace.onDidChangeWorkspaceFolders(() => panelProvider.refresh())
+        vscode.workspace.onDidChangeWorkspaceFolders(() => {
+            panelProvider.refresh();
+            noteTreeProvider.refresh();
+        })
+    );
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('buttonfu.showNotes')) {
+                panelProvider.refresh();
+                noteTreeProvider.refresh();
+                if (!areNotesEnabled()) {
+                    NoteEditorPanel.closeCurrent();
+                }
+            }
+        })
     );
 
     // Command: Open the button editor
@@ -125,6 +164,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand('buttonfu.addButton', () => {
             ButtonEditorPanel.createOrShowWithNew(store, context.extensionUri, 'Global');
+        })
+    );
+
+    // Command: Add a new button with a specific locality
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.addButtonWithLocality', (locality?: string) => {
+            const resolved: ButtonLocality = locality === 'Local' ? 'Local' : 'Global';
+            ButtonEditorPanel.createOrShowWithNew(store, context.extensionUri, resolved);
         })
     );
 
@@ -168,6 +215,181 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             panelProvider.refresh();
         })
     );
+
+    // Command: Open the note editor
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.openNoteEditor', () => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            NoteEditorPanel.createOrShow(noteStore, context.extensionUri);
+        })
+    );
+
+    // Command: Add a new note
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.addNote', async (item?: NoteTreeElement) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            const target = await resolveNoteCreationTarget(item, 'Note');
+            if (!target) {
+                return;
+            }
+            NoteEditorPanel.createOrShowWithNew(noteStore, context.extensionUri, 'note', target.locality, target.parentId);
+        })
+    );
+
+    // Command: Add a new note folder
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.addNoteFolder', async (item?: NoteTreeElement) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            const target = await resolveNoteCreationTarget(item, 'Folder');
+            if (!target) {
+                return;
+            }
+            NoteEditorPanel.createOrShowWithNew(noteStore, context.extensionUri, 'folder', target.locality, target.parentId);
+        })
+    );
+
+    // Command: Primary note activation action menu
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.openNoteActions', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            await noteActionService.openNoteActions(arg);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.previewNote', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            await noteActionService.previewNote(arg);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.copyNote', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            await noteActionService.copyNote(arg);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.insertNote', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            await noteActionService.insertNote(arg);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.sendNoteToCopilot', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            await noteActionService.sendNoteToCopilot(arg);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.editNoteNode', (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            const nodeId = resolveNoteNodeId(arg);
+            if (nodeId) {
+                NoteEditorPanel.createOrShowWithNode(noteStore, context.extensionUri, nodeId);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.deleteNoteNode', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            const nodeId = resolveNoteNodeId(arg);
+            if (!nodeId) {
+                return;
+            }
+
+            const node = noteStore.getNode(nodeId);
+            if (!node) {
+                vscode.window.showErrorMessage(`Note item not found: ${nodeId}`);
+                return;
+            }
+
+            const hasChildren = node.kind === 'folder'
+                && noteStore.getChildren(node.locality, node.id).length > 0;
+
+            if (hasChildren) {
+                const confirmed = await vscode.window.showWarningMessage(
+                    `Delete folder "${node.name}" and all its contents?`,
+                    { modal: true },
+                    'Delete'
+                );
+                if (confirmed !== 'Delete') {
+                    return;
+                }
+            }
+
+            await noteStore.deleteNode(nodeId);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.refreshNotes', () => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            noteTreeProvider.refresh();
+            panelProvider.refresh();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.moveNoteUp', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            const nodeId = resolveNoteNodeId(arg);
+            if (nodeId) {
+                await noteStore.reorderNode(nodeId, 'up');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.moveNoteDown', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            const nodeId = resolveNoteNodeId(arg);
+            if (nodeId) {
+                await noteStore.reorderNode(nodeId, 'down');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.moveNoteToFolder', async (arg?: unknown) => {
+            if (!ensureNotesEnabled()) {
+                return;
+            }
+            await noteActionService.moveNodeToFolder(arg);
+        })
+    );
+
+    await optionDefaultsPromise;
 }
 
 export function deactivate() {
@@ -175,4 +397,67 @@ export function deactivate() {
         d.dispose();
     }
     buttonCommandDisposables.clear();
+}
+
+async function resolveNoteCreationTarget(
+    item: NoteTreeElement | undefined,
+    kindLabel: 'Note' | 'Folder'
+): Promise<{ locality: ButtonLocality; parentId: string | null } | undefined> {
+    if (item) {
+        if ((item as any).kind === 'scopeRoot') {
+            return { locality: (item as any).locality, parentId: null };
+        }
+        if ((item as any).kind === 'folder') {
+            return { locality: (item as any).locality, parentId: (item as any).id };
+        }
+    }
+
+    const hasWorkspace = !!(vscode.workspace.workspaceFolders?.length || vscode.workspace.name);
+    if (!hasWorkspace) {
+        return { locality: 'Global', parentId: null };
+    }
+
+    const workspaceName = vscode.workspace.workspaceFolders?.[0]?.name ?? vscode.workspace.name ?? 'Workspace';
+    const picked = await vscode.window.showQuickPick([
+        {
+            label: 'Global',
+            description: 'Available in every workspace',
+            locality: 'Global' as ButtonLocality
+        },
+        {
+            label: `Workspace [${workspaceName}]`,
+            description: 'Stored with the current workspace',
+            locality: 'Local' as ButtonLocality
+        }
+    ], {
+        title: `Create ${kindLabel}`,
+        placeHolder: `Choose where to create the ${kindLabel.toLowerCase()}`
+    });
+
+    if (!picked) {
+        return undefined;
+    }
+
+    return { locality: picked.locality, parentId: null };
+}
+
+function resolveNoteNodeId(arg?: unknown): string {
+    if (typeof arg === 'string') {
+        return arg;
+    }
+    const candidate = arg as { id?: string; noteId?: string; nodeId?: string } | undefined;
+    return candidate?.id || candidate?.noteId || candidate?.nodeId || '';
+}
+
+function areNotesEnabled(): boolean {
+    return vscode.workspace.getConfiguration('buttonfu').get<boolean>('showNotes', true);
+}
+
+function ensureNotesEnabled(): boolean {
+    if (areNotesEnabled()) {
+        return true;
+    }
+
+    void vscode.window.showInformationMessage('ButtonFu Notes are disabled. Enable "Show Notes" in ButtonFu Options to use the Notes feature.');
+    return false;
 }

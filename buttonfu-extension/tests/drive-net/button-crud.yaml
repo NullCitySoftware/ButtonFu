@@ -1,0 +1,229 @@
+# Open the Button Editor webview, create a button through the current
+# add-button form, and verify the saved card appears in the editor.
+
+name: Button Editor Smoke
+
+app:
+  process_name: Code
+  window_title_regex: '\[Extension Development Host\]'
+  single_instance: reuse
+
+setup:
+  - tool: interact
+    action: sendKeys
+    comment: Clear any open palette or dialog before starting.
+    args:
+      keys: "Escape"
+    continue_on_failure: true
+    delay_after_ms: 300
+
+tests:
+  # ── Open the Button Editor ────────────────────────────────────────
+  - name: open button editor from the sidebar
+    steps:
+      - tool: interact
+        action: sendKeys
+        comment: Dismiss any previously-open editor chrome.
+        args:
+          keys: "Escape"
+        continue_on_failure: true
+        delay_after_ms: 300
+
+      - tool: query
+        action: find
+        comment: Use the already-visible sidebar footer Editor action to open the Button Editor webview.
+        args:
+          by: '{"automationId":"editAllBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+        save:
+          open_editor_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Open the Button Editor.
+        args:
+          element_id: "${open_editor_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1500
+
+      - tool: capture
+        comment: Verify the editor panel opened.
+        args:
+          output: button-crud-01-editor-opened.png
+        expect:
+          success: true
+
+  # ── Discover editor element structure ─────────────────────────────
+  - name: discover editor webview tree
+    steps:
+      - tool: query
+        action: find
+        comment: The Button Editor tab should be active.
+        args:
+          by: '{"name":"ButtonFu - Button Editor"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count_gte: 1
+
+      - tool: query
+        action: tree
+        comment: >
+          Dump the tree inside the editor tab to discover the webview
+          element hierarchy.  The captured node count informs whether
+          the webview content loaded correctly.
+        args:
+          max_depth: 16
+          max_nodes: 1200
+        expect:
+          success: true
+        save:
+          editor_tree_nodes: $.nodeCount
+
+  # ── Create a new button ───────────────────────────────────────────
+  - name: open add-button form
+    steps:
+      - tool: query
+        action: find
+        comment: Find the live Add Button action in the Global Buttons section.
+        args:
+          by: '{"automationId":"addGlobalBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+        save:
+          add_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Open the editor overlay for a new button.
+        args:
+          element_id: "${add_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1000
+
+      - tool: capture
+        comment: Capture the blank editor form.
+        args:
+          output: button-crud-02-add-form.png
+        expect:
+          success: true
+
+  - name: fill button name and command
+    steps:
+      # ── Name field ──
+      - tool: query
+        action: find
+        comment: Find the Name text input in the add-button form.
+        args:
+          by: '{"automationId":"btn-name"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          name_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Enter the test button name.
+        args:
+          element_id: "${name_input}"
+          value: "${appSessionId}"
+        expect:
+          success: true
+
+      # ── Execution Text field ──
+      - tool: query
+        action: find
+        comment: Find the command textarea for the default terminal tab.
+        args:
+          by: '{"automationId":"terminal-tab-commands"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          exec_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Enter a harmless echo command.
+        args:
+          element_id: "${exec_input}"
+          value: "echo ButtonFu DriveNet smoke test"
+        expect:
+          success: true
+
+  # ── Save the button ───────────────────────────────────────────────
+  - name: save the new button
+    steps:
+      - tool: query
+        action: find
+        comment: Locate the Save button in the editor header.
+        args:
+          by: '{"automationId":"saveBtn"}'
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          save_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Save the button.
+        args:
+          element_id: "${save_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1200
+
+      - tool: capture
+        comment: Screenshot after save — the button should appear in the list.
+        args:
+          output: button-crud-03-saved.png
+        expect:
+          success: true
+
+  # ── Verify the button appears ─────────────────────────────────────
+  - name: verify button card in editor
+    steps:
+      - tool: query
+        action: find
+        comment: >
+          The saved button should now be visible in the editor list with
+          its display name.
+        args:
+          name: "${appSessionId}"
+          control_type: Text
+          max_results: 50
+          fallback: true
+        expect:
+          success: true
+          count_gte: 1
+
+teardown:
+  - tool: interact
+    action: sendKeys
+    comment: Close the editor tab.
+    args:
+      keys: "Ctrl+F4"
+    continue_on_failure: true
+
+finally:
+  - tool: interact
+    action: sendKeys
+    comment: Dismiss any remaining overlay.
+    args:
+      keys: "Escape"
+    continue_on_failure: true

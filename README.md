@@ -41,6 +41,24 @@ Both scopes show up together in the sidebar panel, clearly labelled, so you alwa
 
 ---
 
+## Notes & prompts
+
+ButtonFu now includes a native **Notes** tree view alongside the button panel. Notes use the same **Global** and **Workspace** scope model as buttons, so you can keep reusable prompts in one place and project-specific notes in another.
+
+Notes support:
+
+- **Arbitrary nested folders** for organising note libraries and prompt collections
+- **Plain Text** and **Markdown** note formats
+- A primary **action menu** with Preview/Open, Insert into Active Editor, Send to Copilot Chat, Copy, Edit, Move, and Delete
+- **Prompt-enabled notes** that resolve the same token system used by buttons, plus note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteFolderPath$`
+- **Drag-and-drop** between folders and scope roots, plus explicit move commands for precise ordering and cross-scope moves
+
+Markdown notes can be previewed directly, and prompt-enabled notes can be copied, inserted, or sent to Copilot after token resolution. When you add a note or folder from the Notes view without selecting a scope first, ButtonFu prompts for Global versus Workspace placement.
+
+If you want a cleaner sidebar, the ButtonFu Options page includes a `Show Notes` toggle. Disabling it hides the Notes view and related Notes commands without deleting any saved notes.
+
+---
+
 ## The button editor
 
 Click the gear icon in the panel header to open the full button editor. All your buttons are listed in one place — sortable, categorised, and easy to manage.
@@ -63,7 +81,7 @@ Click any button to edit it, or hit **+ Add Button** to create a new one. Every 
 
 ## Multi-terminal execution
 
-Terminal Command buttons can define **multiple named tabs**, each with their own commands. By default all tabs fire simultaneously, each opening its own terminal. Enable the **Dependant On Previous Terminal Success** flag on a tab to switch to sequential mode — that tab only runs if the previous one exited cleanly, and the chain halts on the first failure.
+Terminal Command buttons can define **multiple named tabs**, each with their own commands. By default all tabs fire simultaneously, each opening its own terminal. Enable the **Dependent On Previous Terminal Success** flag on a tab to switch to sequential mode — that tab only runs if the previous one exited cleanly, and the chain halts on the first failure.
 
 Manage tabs from the editor: add, rename (double-click or F2), delete, and reorder left/right. Each terminal is labelled `ButtonFu: <button name> — <tab name>` so you can tell them apart at a glance.
 
@@ -106,3 +124,12 @@ When you click the button, ButtonFu opens a fresh chat session, sets the mode an
 ## Organise with categories
 
 Group related buttons under a **category** label. Categories appear as section headers in both the editor list and the sidebar panel, so your workspace stays tidy even as your button collection grows. Buttons can be reordered within their group using the up/down arrows in the editor.
+
+---
+
+## Development
+
+The extension package lives in `buttonfu-extension`.
+
+- `npm test` runs the full local verification path: compile, lint, a test-only TypeScript emit, and Node-based integration tests for activation, Notes storage, preview, actions, token flows, and tree drag/drop behaviour
+- `npm run vsce-package` builds a VSIX from the extension package

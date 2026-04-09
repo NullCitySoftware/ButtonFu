@@ -2,10 +2,28 @@
 
 All notable changes to ButtonFu are documented here.
 
-## [1.1.1] - 
+## [Unreleased]
+
+## [1.1.2] - 
 
 ### Added 
 
+
+## [1.1.1] - 2026-04-08
+
+### Added
+- **Notes tree view** — ButtonFu now includes a native Notes view with Global and Workspace scopes, nested folders, markdown/plain-text notes, preview/open, copy, insert-into-editor, send-to-Copilot, edit, move, and delete actions
+- **Prompt-enabled notes** — notes can opt into ButtonFu token resolution for copy/insert/Copilot actions, including note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteFolderPath$`
+- **Automated validation** — added Node-based integration tests covering activation, Notes storage, preview, action flows, prompt-token handling, and tree drag/drop behaviour
+- **GitHub Actions CI** — added a workflow that runs `npm test` on Windows and Ubuntu and packages the VSIX artifact
+- **Show Notes option** — the Options page now includes a `Show Notes` toggle that hides or reveals the Notes view while preserving stored note data
+
+### Fixed
+- Copilot prompt submission now restores the clipboard after successful sends and resolves attached files correctly in multi-root workspaces
+- Fixed typo: renamed `dependantOnPrevious` to `dependentOnPrevious` in terminal tab data and UI label
+- Consolidated duplicated `getNonce()`, `escapeHtml()`, and `escapeAttribute()` utilities into a single shared module
+- Button colour rendering now validates hex digits and normalises shorthand hex before CSS interpolation
+- JSONC comment stripping in keybindings parsing now respects quoted strings
 
 ## [1.1.0] - 2026-04-02
 
@@ -46,7 +64,7 @@ All notable changes to ButtonFu are documented here.
 
 ### Added
 - **Keyboard shortcuts** — every button registers a unique VS Code command (`buttonfu.run.<id>`) so it can be targeted by keybindings; the editor shows a **Set Keyboard Shortcut** button (visible when editing an existing button) that opens the VS Code keybindings editor pre-filtered to that button's command; any assigned shortcut is read from `keybindings.json` and displayed on the button's card in the editor list
-- **Multi-terminal execution** — Terminal Command buttons can define multiple named tabs, each with its own command text; tabs run in **parallel** by default, or switch to **sequential** mode when any tab has the *Dependant On Previous Terminal Success* flag set — a dependent tab only runs if its predecessor exits with code 0, and the chain halts on the first failure; each tab opens in its own VS Code terminal named `ButtonFu: <button> — <tab>`; uses VS Code shell integration (1.93+) for accurate exit-code detection with a three-second fallback to close-detection for older environments; the tab bar supports add, rename (double-click or F2), delete, and left/right reorder
+- **Multi-terminal execution** — Terminal Command buttons can define multiple named tabs, each with its own command text; tabs run in **parallel** by default, or switch to **sequential** mode when any tab has the *Dependent On Previous Terminal Success* flag set — a dependent tab only runs if its predecessor exits with code 0, and the chain halts on the first failure; each tab opens in its own VS Code terminal named `ButtonFu: <button> — <tab>`; uses VS Code shell integration (1.93+) for accurate exit-code detection with a three-second fallback to close-detection for older environments; the tab bar supports add, rename (double-click or F2), delete, and left/right reorder
 - **Pastel colour presets** — a second row of ten soft pastel swatches (Pastel Blue, Green, Peach, Coral, Lavender, Yellow, Teal, Rose, Periwinkle, Taupe) has been added beneath the existing vivid colour row in the button editor colour picker
 
 ## [1.0.3] - 2026-03-24
