@@ -1,5 +1,0 @@
-2026-04-11 10:34:02.516 [error] Error: Error mutex already exists
-    at hs.installMutex (file:///C:/Users/BootBlock/AppData/Local/Programs/Microsoft%20VS%20Code/41dd792b5e/resources/app/out/main.js:591:25601)
-2026-04-11 10:34:02.544 [info] update#setState disabled
-2026-04-11 10:34:02.544 [info] update#ctor - updates are disabled by the environment
-2026-04-11 10:34:02.578 [error] CodeWindow: renderer process gone (reason: launch-failed, code: 57)
