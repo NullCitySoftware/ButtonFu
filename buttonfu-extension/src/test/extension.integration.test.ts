@@ -5,7 +5,7 @@ import test from 'node:test';
 import { createDefaultButton } from '../types';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
 
-test('activate registers notes commands and providers', async () => {
+test('activate registers the flat note commands and providers', async () => {
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
@@ -22,7 +22,7 @@ test('activate registers notes commands and providers', async () => {
         'buttonfu.refreshButtons',
         'buttonfu.openNoteEditor',
         'buttonfu.addNote',
-        'buttonfu.addNoteFolder',
+        'buttonfu.executeNote',
         'buttonfu.openNoteActions',
         'buttonfu.previewNote',
         'buttonfu.copyNote',
@@ -30,10 +30,7 @@ test('activate registers notes commands and providers', async () => {
         'buttonfu.sendNoteToCopilot',
         'buttonfu.editNoteNode',
         'buttonfu.deleteNoteNode',
-        'buttonfu.refreshNotes',
-        'buttonfu.moveNoteUp',
-        'buttonfu.moveNoteDown',
-        'buttonfu.moveNoteToFolder'
+        'buttonfu.refreshNotes'
     ];
 
     for (const command of expectedCommands) {
@@ -41,23 +38,23 @@ test('activate registers notes commands and providers', async () => {
     }
 
     assert.ok(harness.registeredWebviewProviders.has('buttonfu.buttonsView'));
-    assert.ok(harness.registeredTreeViews.has('buttonfu.notesView'));
+    assert.equal(harness.registeredTreeViews.has('buttonfu.notesView'), false);
     assert.ok(harness.registeredContentProviders.has('buttonfu-note-preview'));
     assert.ok(context.subscriptions.length > 0, 'Activation should populate context subscriptions.');
 });
 
-test('addNote prompts for scope when invoked without a tree target', async () => {
+test('addNote prompts for scope when invoked without a locality', async () => {
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
-    let createRequest: { kind: string; locality: string; parentId: string | null } | undefined;
+    let createLocality: string | undefined;
 
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
         './noteEditorPanel': {
             NoteEditorPanel: {
                 createOrShow: () => undefined,
                 createOrShowWithNode: () => undefined,
-                createOrShowWithNew: (_store: unknown, _extensionUri: unknown, kind: string, locality: string, parentId: string | null) => {
-                    createRequest = { kind, locality, parentId };
+                createOrShowWithNew: (_store: unknown, _extensionUri: unknown, locality: string) => {
+                    createLocality = locality;
                 }
             }
         }
@@ -70,11 +67,63 @@ test('addNote prompts for scope when invoked without a tree target', async () =>
     await harness.registeredCommands.get('buttonfu.addNote')?.();
 
     assert.equal(harness.quickPickCalls.length, 1);
-    assert.deepEqual(createRequest, {
-        kind: 'note',
-        locality: 'Local',
-        parentId: null
+    assert.equal(createLocality, 'Local');
+});
+
+test('addNote uses an explicit locality without prompting', async () => {
+    const harness = createFakeVscodeHarness();
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    let createLocality: string | undefined;
+
+    const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
+        './noteEditorPanel': {
+            NoteEditorPanel: {
+                createOrShow: () => undefined,
+                createOrShowWithNode: () => undefined,
+                createOrShowWithNew: (_store: unknown, _extensionUri: unknown, locality: string) => {
+                    createLocality = locality;
+                }
+            }
+        }
     });
+    const context = harness.createExtensionContext();
+
+    extension.activate(context);
+
+    await harness.registeredCommands.get('buttonfu.addNote')?.({ locality: 'Global' });
+
+    assert.equal(harness.quickPickCalls.length, 0);
+    assert.equal(createLocality, 'Global');
+});
+
+test('executeNote routes through the note action service default action', async () => {
+    const harness = createFakeVscodeHarness();
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    let executedArg: unknown;
+
+    const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
+        './noteActionService': {
+            NoteActionService: class NoteActionServiceStub {
+                constructor(_store: unknown, _extensionUri: unknown, _previewProvider: unknown) {}
+
+                async executeDefaultAction(arg: unknown): Promise<void> {
+                    executedArg = arg;
+                }
+
+                async openNoteActions(): Promise<void> { return; }
+                async previewNote(): Promise<void> { return; }
+                async copyNote(): Promise<void> { return; }
+                async insertNote(): Promise<void> { return; }
+                async sendNoteToCopilot(): Promise<void> { return; }
+            }
+        }
+    });
+    const context = harness.createExtensionContext();
+
+    extension.activate(context);
+    await harness.registeredCommands.get('buttonfu.executeNote')?.('note-123');
+
+    assert.equal(executedArg, 'note-123');
 });
 
 test('openNoteEditor is enabled by default and opens the editor', async () => {
@@ -128,17 +177,15 @@ test('notes commands are blocked when the showNotes setting is disabled', async 
     ]);
 });
 
-test('package manifest hides the native notes view and keeps Notes enabled through the sidebar section setting', () => {
+test('package manifest removes the notes tree view and keeps the sidebar notes setting', () => {
     const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-
-    const notesView = packageJson.contributes.views.buttonfu.find((view: { id: string }) => view.id === 'buttonfu.notesView');
     const notesSetting = packageJson.contributes.configuration.properties['buttonfu.showNotes'];
     const commandPalette = packageJson.contributes.menus.commandPalette;
 
-    assert.equal(notesView.when, 'false');
+    assert.equal(packageJson.contributes.views.buttonfu.some((view: { id: string }) => view.id === 'buttonfu.notesView'), false);
     assert.equal(notesSetting.default, true);
-    assert.match(notesSetting.description, /Notes section/);
+    assert.match(notesSetting.description, /split buttons/i);
     assert.ok(commandPalette.some((item: { command: string; when: string }) => item.command === 'buttonfu.openNoteEditor' && item.when === 'config.buttonfu.showNotes'));
 });
 
@@ -156,7 +203,7 @@ test('package manifest keeps the legacy Buttons view toolbar actions', () => {
     assert.equal(refreshButtons.group, 'navigation@2');
 });
 
-test('disabling showNotes closes the note editor and refreshes the tree', async () => {
+test('disabling showNotes closes the note editor and refreshes the sidebar provider', async () => {
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     let closed = 0;
@@ -171,11 +218,13 @@ test('disabling showNotes closes the note editor and refreshes the tree', async 
                 closeCurrent: () => { closed += 1; }
             }
         },
-        './noteTreeProvider': {
-            NoteTreeProvider: class NoteTreeProviderStub {
-                static viewType = 'buttonfu.notesView';
+        './buttonPanelProvider': {
+            ButtonPanelProvider: class ButtonPanelProviderStub {
+                static viewType = 'buttonfu.buttonsView';
 
-                constructor(_store: unknown) {}
+                constructor(_extensionUri: unknown, _store: unknown, _noteStore: unknown, _globalState: unknown) {}
+
+                resolveWebviewView(): void {}
 
                 refresh(): void {
                     refreshed += 1;

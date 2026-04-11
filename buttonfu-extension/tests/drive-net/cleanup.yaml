@@ -1,0 +1,123 @@
+# Closes the Extension Development Host window at the end of a manifest run.
+# The save-changes modal is conditional — the host may close cleanly
+# without prompting, so every save-related step is gated by a `when`.
+
+name: Extension Host Cleanup
+
+app:
+  process_name: Code
+  window_title_regex: '\[Extension Development Host\]'
+  single_instance: reuse
+
+tests:
+  - name: dismiss blockers and close the extension development host
+    steps:
+      # ── Dismiss any leftover overlay ──────────────────────────────
+      - tool: interact
+        action: sendKeys
+        comment: Clear any palette or dialog that might block the close.
+        args:
+          keys: "Escape"
+        continue_on_failure: true
+
+      # ── Check whether a save-changes modal is already showing ─────
+      - tool: window
+        action: list
+        comment: Snapshot the current topmost window to detect a pre-existing save modal.
+        expect:
+          success: true
+        save:
+          cleanup_top_window: $.items[0].handle
+          cleanup_top_window_title: $.items[0].title
+
+      - tool: query
+        action: find
+        comment: Resolve the Don't Save button if a save-changes modal is the topmost window.
+        args:
+          window_handle: "${cleanup_top_window}"
+          automation_id: CommandButton_101
+          control_type: Button
+          max_results: 10
+        expect:
+          success: true
+          count: 1
+        save:
+          dismiss_existing_save_prompt: $.items[0].elementId
+        when:
+          variable: cleanup_top_window_title
+          equals: "Visual Studio Code"
+
+      - tool: interact
+        action: click
+        comment: Dismiss a pre-existing save-changes modal via Don't Save.
+        args:
+          element_id: "${dismiss_existing_save_prompt}"
+        expect:
+          success: true
+        when:
+          variable: dismiss_existing_save_prompt
+          exists: true
+
+      # ── Close the Extension Development Host ──────────────────────
+      - tool: window
+        action: list
+        comment: Re-list windows after optional dialog dismissal.
+        expect:
+          success: true
+        save:
+          cleanup_host_window: $.items[0].handle
+          cleanup_host_window_title: $.items[0].title
+
+      - tool: window
+        action: bringToFront
+        comment: Ensure the host window has focus before closing.
+        args:
+          window_handle: "${cleanup_host_window}"
+        expect:
+          success: true
+
+      - tool: window
+        action: close
+        comment: Close the Extension Development Host window.
+        args:
+          window_handle: "${cleanup_host_window}"
+        expect:
+          success: true
+
+      # ── Handle any post-close save-changes modal ──────────────────
+      - tool: window
+        action: list
+        comment: Verify the host window is gone and check whether a save modal appeared.
+        expect:
+          success: true
+        save:
+          post_host_close_window: $.items[0].handle
+          post_host_close_window_title: $.items[0].title
+
+      - tool: query
+        action: find
+        comment: Resolve Don't Save if a save modal surfaced when the host closed.
+        args:
+          window_handle: "${post_host_close_window}"
+          automation_id: CommandButton_101
+          control_type: Button
+          max_results: 10
+        expect:
+          success: true
+          count: 1
+        save:
+          dismiss_host_close_prompt: $.items[0].elementId
+        when:
+          variable: post_host_close_window_title
+          equals: "Visual Studio Code"
+
+      - tool: interact
+        action: click
+        comment: Dismiss the post-close save modal via Don't Save.
+        args:
+          element_id: "${dismiss_host_close_prompt}"
+        expect:
+          success: true
+        when:
+          variable: dismiss_host_close_prompt
+          exists: true

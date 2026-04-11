@@ -39,11 +39,10 @@ test('note editor uses the shared icon picker and shared Copilot model lookup', 
     assert.match(panel.panel.webview.html, /id="nodeColourPicker"/);
     assert.match(panel.panel.webview.html, /id="noteModelAutocomplete"/);
     assert.match(panel.panel.webview.html, /id="noteModelAutocompleteTrigger"/);
-    assert.match(panel.panel.webview.html, /id="userTokensCardToggle"/);
-    assert.equal(panel.panel.webview.html.includes("split(/\\r?\\n/)"), true);
-    assert.equal(panel.panel.webview.html.includes("join('\\n')"), true);
-    assert.ok(panel.panel.webview.html.indexOf('id="noteContent"') < panel.panel.webview.html.indexOf('id="noteAttachFiles"'));
-    assert.doesNotMatch(panel.panel.webview.html, /list="iconList"/);
+    assert.match(panel.panel.webview.html, /id="noteCategory"/);
+    assert.match(panel.panel.webview.html, /id="noteDefaultAction"/);
+    assert.doesNotMatch(panel.panel.webview.html, /id="nodeKind"/);
+    assert.doesNotMatch(panel.panel.webview.html, /id="nodeParent"/);
 
     await panel.sendMessage({ type: 'getModels' });
 
@@ -62,7 +61,7 @@ test('note editor uses the shared icon picker and shared Copilot model lookup', 
     panel.dispose();
 });
 
-test('note editor webview script boots and the icon, model, mode, colour, attachment, and card controls stay live', () => {
+test('note editor webview script boots and the icon, model, default action, colour, attachment, and card controls stay live', () => {
     const harness = createFakeVscodeHarness();
     const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
     const noteEditorPanelModulePath = path.resolve(__dirname, '..', 'noteEditorPanel.js');
@@ -80,27 +79,30 @@ test('note editor webview script boots and the icon, model, mode, colour, attach
     const runtime = executeWebviewScripts(panel.panel.webview.html);
     const note = createDefaultNote('Global');
     note.name = 'Prompt Note';
+    note.category = 'Prompts';
+    note.defaultAction = 'copy';
     note.content = 'Body';
     note.copilotAttachFiles = ['docs/spec.md'];
 
     assert.ok(runtime.postedMessages.some((message: any) => message?.type === 'requestData'));
     assert.ok(runtime.postedMessages.some((message: any) => message?.type === 'getModels'));
     assert.match(runtime.document.getElementById('noteCopilotMode')?.innerHTML ?? '', /Agent/);
+    assert.match(runtime.document.getElementById('noteDefaultAction')?.innerHTML ?? '', /Copy to Clipboard/);
 
     runtime.dispatchMessage({
         type: 'setState',
         nodes: [note],
         request: {
             mode: 'edit',
-            kind: 'note',
             nodeId: note.id,
-            locality: note.locality,
-            parentId: note.parentId
+            locality: note.locality
         },
         workspaceName: 'TestWorkspace',
         hasWorkspace: true
     });
     assert.equal(runtime.document.getElementById('editorTitle')?.textContent, 'Edit Note');
+    assert.equal(runtime.document.getElementById('noteCategory')?.value, 'Prompts');
+    assert.equal(runtime.document.getElementById('noteDefaultAction')?.value, 'copy');
     assert.equal(runtime.document.getElementById('noteAttachFiles')?.value, 'docs/spec.md');
 
     runtime.dispatchMessage({
@@ -141,7 +143,7 @@ test('note editor webview script boots and the icon, model, mode, colour, attach
     panel.dispose();
 });
 
-test('note editor keeps Name before Kind and blocks whitespace-only names until valid input is provided', () => {
+test('note editor blocks whitespace-only names until valid input is provided', () => {
     const harness = createFakeVscodeHarness();
     const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
     const noteEditorPanelModulePath = path.resolve(__dirname, '..', 'noteEditorPanel.js');
@@ -155,7 +157,7 @@ test('note editor keeps Name before Kind and blocks whitespace-only names until 
 
     const panel = harness.webviewPanels[0];
     assert.ok(panel, 'Expected a note editor webview panel to be created.');
-    assert.ok(panel.panel.webview.html.indexOf('id="nodeName"') < panel.panel.webview.html.indexOf('id="nodeKind"'));
+    assert.ok(panel.panel.webview.html.indexOf('id="nodeName"') < panel.panel.webview.html.indexOf('id="noteCategory"'));
 
     const runtime = executeWebviewScripts(panel.panel.webview.html);
 
@@ -184,7 +186,7 @@ test('note editor keeps Name before Kind and blocks whitespace-only names until 
     panel.dispose();
 });
 
-test('note editor syncs the default icon with Kind changes without overwriting custom icons', () => {
+test('note editor createOrShowWithNew seeds the requested locality', () => {
     const harness = createFakeVscodeHarness();
     const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
     const noteEditorPanelModulePath = path.resolve(__dirname, '..', 'noteEditorPanel.js');
@@ -194,7 +196,7 @@ test('note editor syncs the default icon with Kind changes without overwriting c
     const store = new noteStoreModule.NoteStore(context);
 
     noteEditorPanelModule.NoteEditorPanel.configure(context.globalState);
-    noteEditorPanelModule.NoteEditorPanel.createOrShow(store, context.extensionUri);
+    noteEditorPanelModule.NoteEditorPanel.createOrShowWithNew(store, context.extensionUri, 'Local');
 
     const panel = harness.webviewPanels[0];
     assert.ok(panel, 'Expected a note editor webview panel to be created.');
@@ -205,36 +207,111 @@ test('note editor syncs the default icon with Kind changes without overwriting c
         nodes: [],
         request: {
             mode: 'new',
-            kind: 'note',
-            locality: 'Global',
-            parentId: null
+            locality: 'Local'
         },
         workspaceName: 'TestWorkspace',
         hasWorkspace: true
     });
 
-    const kindSelect = runtime.document.getElementById('nodeKind');
-    const iconInput = runtime.document.getElementById('nodeIcon');
-    assert.ok(kindSelect, 'Expected the Kind input to exist.');
-    assert.ok(iconInput, 'Expected the Icon input to exist.');
+    assert.equal(runtime.document.getElementById('nodeLocality')?.value, 'Local');
+    assert.equal(runtime.document.getElementById('noteDefaultAction')?.value, 'open');
+    assert.equal(runtime.document.activeElement?.id, 'nodeName');
 
-    assert.equal(iconInput.value, 'note');
-    assert.equal(runtime.document.getElementById('editorTitle')?.textContent, 'Create Note');
+    panel.dispose();
+});
 
-    kindSelect.value = 'folder';
-    kindSelect.dispatch('change');
-    assert.equal(iconInput.value, 'folder');
-    assert.equal(runtime.document.getElementById('editorTitle')?.textContent, 'Create Folder');
+test('note editor keeps Local scope available even without a workspace folder', () => {
+    const harness = createFakeVscodeHarness();
+    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
+    const noteEditorPanelModulePath = path.resolve(__dirname, '..', 'noteEditorPanel.js');
+    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
+    const noteEditorPanelModule = loadWithPatchedVscode<{ NoteEditorPanel: any }>(noteEditorPanelModulePath, harness.vscode);
+    const context = harness.createExtensionContext();
+    const store = new noteStoreModule.NoteStore(context);
 
-    kindSelect.value = 'note';
-    kindSelect.dispatch('change');
-    assert.equal(iconInput.value, 'note');
-    assert.equal(runtime.document.getElementById('editorTitle')?.textContent, 'Create Note');
+    noteEditorPanelModule.NoteEditorPanel.configure(context.globalState);
+    noteEditorPanelModule.NoteEditorPanel.createOrShowWithNew(store, context.extensionUri, 'Local');
 
-    iconInput.value = 'book';
-    kindSelect.value = 'folder';
-    kindSelect.dispatch('change');
-    assert.equal(iconInput.value, 'book');
+    const panel = harness.webviewPanels[0];
+    assert.ok(panel, 'Expected a note editor webview panel to be created.');
+
+    const runtime = executeWebviewScripts(panel.panel.webview.html);
+    runtime.dispatchMessage({
+        type: 'setState',
+        nodes: [],
+        request: {
+            mode: 'new',
+            locality: 'Local'
+        },
+        workspaceName: null,
+        hasWorkspace: false
+    });
+
+    const localitySelect = runtime.document.getElementById('nodeLocality');
+    assert.ok(localitySelect, 'Expected the scope selector to exist.');
+    assert.equal(localitySelect.disabled, false);
+    assert.match(localitySelect.innerHTML, /value="Global"/);
+    assert.match(localitySelect.innerHTML, /value="Local"/);
+    assert.equal(localitySelect.value, 'Local');
+
+    panel.dispose();
+});
+
+test('note editor preserves a user-selected scope for a new note across refreshes and saves it', () => {
+    const harness = createFakeVscodeHarness();
+    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
+    const noteEditorPanelModulePath = path.resolve(__dirname, '..', 'noteEditorPanel.js');
+    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
+    const noteEditorPanelModule = loadWithPatchedVscode<{ NoteEditorPanel: any }>(noteEditorPanelModulePath, harness.vscode);
+    const context = harness.createExtensionContext();
+    const store = new noteStoreModule.NoteStore(context);
+
+    noteEditorPanelModule.NoteEditorPanel.configure(context.globalState);
+    noteEditorPanelModule.NoteEditorPanel.createOrShowWithNew(store, context.extensionUri, 'Global');
+
+    const panel = harness.webviewPanels[0];
+    assert.ok(panel, 'Expected a note editor webview panel to be created.');
+
+    const runtime = executeWebviewScripts(panel.panel.webview.html);
+    runtime.dispatchMessage({
+        type: 'setState',
+        nodes: [],
+        request: {
+            mode: 'new',
+            locality: 'Global'
+        },
+        workspaceName: 'TestWorkspace',
+        hasWorkspace: true
+    });
+
+    const localitySelect = runtime.document.getElementById('nodeLocality');
+    assert.ok(localitySelect, 'Expected the scope selector to exist.');
+    localitySelect.value = 'Local';
+    localitySelect.dispatch('change');
+
+    runtime.dispatchMessage({
+        type: 'setState',
+        nodes: [],
+        request: {
+            mode: 'new',
+            locality: 'Global'
+        },
+        workspaceName: 'TestWorkspace',
+        hasWorkspace: true
+    });
+
+    assert.equal(runtime.document.getElementById('nodeLocality')?.value, 'Local');
+
+    const nameInput = runtime.document.getElementById('nodeName');
+    assert.ok(nameInput, 'Expected the note name input to exist.');
+    nameInput.value = 'Scoped note';
+    nameInput.dispatch('input');
+
+    runtime.click('saveBtn');
+
+    const saveMessage = runtime.postedMessages.filter((message: any) => message?.type === 'saveNode').at(-1) as any;
+    assert.ok(saveMessage, 'Expected a saveNode message to be posted.');
+    assert.equal(saveMessage.note.locality, 'Local');
 
     panel.dispose();
 });
@@ -289,7 +366,7 @@ test('note editor delete delegates to the command and resets to create mode afte
         }
 
         const confirmed = await harness.vscode.window.showWarningMessage(
-            `Delete ${target.kind === 'folder' ? 'folder' : 'note'} "${target.name}"?`,
+            `Delete note "${target.name}"?`,
             { modal: true },
             'Delete'
         );
@@ -314,68 +391,7 @@ test('note editor delete delegates to the command and resets to create mode afte
     const latestState = setStateMessages.at(-1);
     assert.ok(latestState, 'Expected the note editor to post an updated state after deletion.');
     assert.equal(latestState.request.mode, 'new');
-    assert.equal(latestState.request.kind, 'note');
     assert.equal(latestState.request.locality, 'Global');
 
     panel.dispose();
-});
-
-test('getAvailableCopilotModels falls back, dedupes, and sorts the discovered models', async () => {
-    const harness = createFakeVscodeHarness();
-    const webviewControlsModulePath = path.resolve(__dirname, '..', 'webviewControls.js');
-    const selectors: Array<{ vendor?: string } | undefined> = [];
-
-    harness.vscode.lm = {
-        selectChatModels: async (selector?: { vendor?: string }) => {
-            selectors.push(selector);
-            if (selector?.vendor === 'copilot') {
-                return [];
-            }
-
-            return [
-                {
-                    id: 'gpt-5.4',
-                    name: 'GPT-5.4',
-                    vendor: 'GitHub',
-                    family: 'gpt-5',
-                    maxInputTokens: 128000
-                },
-                {
-                    id: 'gpt-4.1',
-                    name: 'GPT-4.1',
-                    vendor: 'Azure',
-                    family: 'gpt-4',
-                    maxInputTokens: 64000
-                },
-                {
-                    id: 'gpt-5.4',
-                    name: 'GPT-5.4 Duplicate',
-                    vendor: 'GitHub',
-                    family: 'gpt-5',
-                    maxInputTokens: 128000
-                }
-            ];
-        }
-    };
-
-    const webviewControls = loadWithPatchedVscode<{ getAvailableCopilotModels(): Promise<any[]> }>(webviewControlsModulePath, harness.vscode);
-    const models = await webviewControls.getAvailableCopilotModels();
-
-    assert.deepEqual(selectors, [{ vendor: 'copilot' }, undefined]);
-    assert.deepEqual(models, [
-        {
-            id: 'gpt-4.1',
-            name: 'GPT-4.1',
-            vendor: 'Azure',
-            family: 'gpt-4',
-            maxInputTokens: 64000
-        },
-        {
-            id: 'gpt-5.4',
-            name: 'GPT-5.4',
-            vendor: 'GitHub',
-            family: 'gpt-5',
-            maxInputTokens: 128000
-        }
-    ]);
 });

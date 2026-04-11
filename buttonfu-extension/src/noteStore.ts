@@ -2,232 +2,132 @@ import * as vscode from 'vscode';
 import {
     ButtonLocality,
     DEFAULT_NOTE_FOLDER_ICON,
-    DEFAULT_NOTE_ICON,
     LEGACY_DEFAULT_NOTE_ICON,
     NoteConfig,
-    NoteFolder,
-    NoteNode,
+    NOTE_DEFAULT_ACTIONS,
     generateId,
     getDefaultNoteIcon
 } from './types';
 
 const LOCAL_NOTES_KEY = 'buttonfu.localNotes';
 
-function normalizePersistedIcon(kind: 'folder' | 'note', icon: string | undefined): string {
+function normalizePersistedIcon(icon: string | undefined): string {
     const value = icon?.trim();
-    if (!value) {
-        return getDefaultNoteIcon(kind);
-    }
-
-    if (kind === 'folder' && value === LEGACY_DEFAULT_NOTE_ICON) {
-        return DEFAULT_NOTE_FOLDER_ICON;
-    }
-
-    if (kind === 'note' && value === DEFAULT_NOTE_FOLDER_ICON) {
-        return DEFAULT_NOTE_ICON;
+    if (!value || value === DEFAULT_NOTE_FOLDER_ICON || value === LEGACY_DEFAULT_NOTE_ICON) {
+        return getDefaultNoteIcon();
     }
 
     return value;
 }
 
-/** Manages persistence and hierarchy operations for note folders and notes. */
+function normalizeDefaultAction(action: unknown): NoteConfig['defaultAction'] {
+    return NOTE_DEFAULT_ACTIONS.includes(action as NoteConfig['defaultAction'])
+        ? action as NoteConfig['defaultAction']
+        : 'open';
+}
+
+/** Manages persistence and ordering for flat note items. */
 export class NoteStore {
     private readonly _onDidChange = new vscode.EventEmitter<void>();
     public readonly onDidChange = this._onDidChange.event;
     private suppressGlobalConfigRefresh = false;
 
     constructor(private readonly context: vscode.ExtensionContext) {
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (this.suppressGlobalConfigRefresh) {
-                return;
-            }
-            if (e.affectsConfiguration('buttonfu.globalNotes')) {
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (!this.suppressGlobalConfigRefresh && event.affectsConfiguration('buttonfu.globalNotes')) {
                 this._onDidChange.fire();
             }
         });
     }
 
-    /** Get all global notes and folders from user settings. */
-    getGlobalNodes(): NoteNode[] {
+    /** Get all global notes from user settings. */
+    getGlobalNodes(): NoteConfig[] {
         const config = vscode.workspace.getConfiguration('buttonfu');
-        const raw = config.get<NoteNode[]>('globalNotes') || [];
-        return raw.map((node) => this.migrateNode({ ...node, locality: 'Global' }, true));
+        const raw = config.get<unknown[]>('globalNotes') ?? [];
+        return this.normalizePersistedNotes(raw, 'Global');
     }
 
-    /** Get all workspace notes and folders from workspace state. */
-    getLocalNodes(): NoteNode[] {
-        const raw = this.context.workspaceState.get<NoteNode[]>(LOCAL_NOTES_KEY) || [];
-        return raw.map((node) => this.migrateNode({ ...node, locality: 'Local' }, true));
+    /** Get all workspace notes from workspace state. */
+    getLocalNodes(): NoteConfig[] {
+        const raw = this.context.workspaceState.get<unknown[]>(LOCAL_NOTES_KEY) ?? [];
+        return this.normalizePersistedNotes(raw, 'Local');
     }
 
-    /** Get all note nodes across both scopes. */
-    getAllNodes(): NoteNode[] {
+    /** Get all notes across both scopes. */
+    getAllNodes(): NoteConfig[] {
         return [...this.getGlobalNodes(), ...this.getLocalNodes()];
     }
 
-    /** Get a node by ID. */
-    getNode(id: string): NoteNode | undefined {
-        return this.getAllNodes().find((node) => node.id === id);
+    /** Get a note by ID. */
+    getNode(id: string): NoteConfig | undefined {
+        return this.getAllNodes().find((note) => note.id === id);
     }
 
-    /** Get a note item by ID. */
+    /** Get a note by ID. */
     getNote(id: string): NoteConfig | undefined {
-        const node = this.getNode(id);
-        return node?.kind === 'note' ? node : undefined;
+        return this.getNode(id);
     }
 
-    /** Get a folder by ID. */
-    getFolder(id: string): NoteFolder | undefined {
-        const node = this.getNode(id);
-        return node?.kind === 'folder' ? node : undefined;
-    }
-
-    /** Get the immediate children for a scope root or folder. */
-    getChildren(locality: ButtonLocality, parentId: string | null): NoteNode[] {
-        return this.getAllNodes()
-            .filter((node) => node.locality === locality && (node.parentId ?? null) === parentId)
-            .sort((left, right) => this.compareNodes(left, right));
-    }
-
-    /** Get all folders in a given scope. */
-    getFolders(locality: ButtonLocality): NoteFolder[] {
-        return this.getAllNodes()
-            .filter((node): node is NoteFolder => node.locality === locality && node.kind === 'folder')
-            .sort((left, right) => this.compareNodes(left, right));
-    }
-
-    /** Get all descendant IDs for a folder node. */
-    getDescendantIds(id: string): string[] {
-        const allNodes = this.getAllNodes();
-        return this.collectSubtreeIds(id, allNodes);
-    }
-
-    /** Get the slash-separated folder path for a node within its scope. */
-    getFolderPath(nodeId: string): string {
-        const allNodes = this.getAllNodes();
-        const node = allNodes.find((entry) => entry.id === nodeId);
-        if (!node) { return ''; }
-
-        const parts: string[] = [];
-        let parentId = node.parentId;
-        while (parentId) {
-            const parent = allNodes.find((entry) => entry.id === parentId && entry.kind === 'folder') as NoteFolder | undefined;
-            if (!parent) {
-                break;
-            }
-            parts.unshift(parent.name);
-            parentId = parent.parentId;
+    /** Save or update a note. */
+    async saveNode(note: NoteConfig): Promise<NoteConfig> {
+        const allNotes = this.getAllNodes().map((entry) => this.cloneNote(entry));
+        const migrated = this.migrateNote(note);
+        if (!migrated) {
+            throw new Error('Failed to save the note.');
         }
-        return parts.join('/');
-    }
 
-    /** Save or update a note node. */
-    async saveNode(node: NoteNode): Promise<NoteNode> {
-        const allNodes = this.getAllNodes().map((entry) => this.cloneNode(entry));
-        const migrated = this.migrateNode(this.cloneNode(node));
         migrated.name = migrated.name.trim();
+        migrated.category = migrated.category.trim() || 'General';
         if (!migrated.name) {
             throw new Error('A name is required.');
         }
-        const existingIndex = allNodes.findIndex((entry) => entry.id === migrated.id);
 
+        const existingIndex = allNotes.findIndex((entry) => entry.id === migrated.id);
         if (existingIndex >= 0) {
-            const existing = allNodes[existingIndex];
-            const movedScope = existing.locality !== migrated.locality;
-            const movedParent = (existing.parentId ?? null) !== (migrated.parentId ?? null);
-            const contentChanged = existing.kind === 'note'
-                && migrated.kind === 'note'
-                && existing.content !== migrated.content;
-
-            if (existing.kind === 'folder' && movedScope) {
-                const subtreeIds = new Set(this.collectSubtreeIds(existing.id, allNodes));
-                for (const entry of allNodes) {
-                    if (subtreeIds.has(entry.id)) {
-                        entry.locality = migrated.locality;
-                    }
-                }
-            }
-
-            const updatedNode = this.migrateNode({
+            const existing = allNotes[existingIndex];
+            const localityChanged = existing.locality !== migrated.locality;
+            const contentChanged = existing.content !== migrated.content;
+            const updated: NoteConfig = {
                 ...existing,
                 ...migrated,
-                sortOrder: existing.sortOrder,
-                updatedAt: migrated.kind === 'note'
-                    ? (contentChanged ? Date.now() : (existing.kind === 'note' ? existing.updatedAt : Date.now()))
-                    : undefined
-            } as NoteNode);
-
-            if (!this.isValidParent(updatedNode, allNodes, updatedNode.parentId)) {
-                updatedNode.parentId = null;
-            }
-            if (movedScope || movedParent || updatedNode.sortOrder === undefined || updatedNode.sortOrder === null) {
-                updatedNode.sortOrder = this.getNextSortOrder(allNodes, updatedNode.locality, updatedNode.parentId, updatedNode.id);
-            }
-
-            allNodes[existingIndex] = updatedNode;
+                sortOrder: localityChanged
+                    ? this.getNextSortOrder(allNotes, migrated.locality, migrated.id)
+                    : existing.sortOrder,
+                updatedAt: contentChanged ? Date.now() : existing.updatedAt
+            };
+            allNotes[existingIndex] = updated;
         } else {
             if (!migrated.id) {
                 migrated.id = generateId();
             }
-            if (!this.isValidParent(migrated, allNodes, migrated.parentId)) {
-                migrated.parentId = null;
-            }
             if (migrated.sortOrder === undefined || migrated.sortOrder === null) {
-                migrated.sortOrder = this.getNextSortOrder(allNodes, migrated.locality, migrated.parentId);
+                migrated.sortOrder = this.getNextSortOrder(allNotes, migrated.locality);
             }
-            if (migrated.kind === 'note') {
-                migrated.updatedAt = Date.now();
-            }
-            allNodes.push(migrated);
+            migrated.updatedAt = Date.now();
+            allNotes.push(migrated);
         }
 
-        await this.persistNodes(allNodes);
+        await this.persistNotes(allNotes);
         return this.getNode(migrated.id)!;
     }
 
-    /** Delete a note node. Folders delete their full subtree. */
+    /** Delete a note by ID. */
     async deleteNode(id: string): Promise<void> {
-        const allNodes = this.getAllNodes().map((entry) => this.cloneNode(entry));
-        const subtreeIds = new Set(this.collectSubtreeIds(id, allNodes));
-        if (subtreeIds.size === 0) {
-            return;
-        }
-
-        const filtered = allNodes.filter((entry) => !subtreeIds.has(entry.id));
-        await this.persistNodes(filtered);
+        const filtered = this.getAllNodes().filter((entry) => entry.id !== id);
+        await this.persistNotes(filtered);
     }
 
-    /** Move a node to a new parent, optionally changing scope at the same time. */
-    async moveNode(id: string, locality: ButtonLocality, parentId: string | null): Promise<boolean> {
-        const node = this.getNode(id);
-        if (!node) {
-            return false;
-        }
-
-        const allNodes = this.getAllNodes();
-        const updatedNode = this.cloneNode(node);
-        updatedNode.locality = locality;
-        updatedNode.parentId = parentId;
-        if (!this.isValidParent(updatedNode, allNodes, parentId)) {
-            return false;
-        }
-
-        updatedNode.sortOrder = this.getNextSortOrder(allNodes, locality, parentId, id);
-        await this.saveNode(updatedNode);
-        return true;
-    }
-
-    /** Move a node within its siblings. */
+    /** Move a note within its locality order. */
     async reorderNode(id: string, direction: 'up' | 'down'): Promise<void> {
-        const allNodes = this.getAllNodes().map((entry) => this.cloneNode(entry));
-        const node = allNodes.find((entry) => entry.id === id);
-        if (!node) {
+        const allNotes = this.getAllNodes().map((entry) => this.cloneNote(entry));
+        const note = allNotes.find((entry) => entry.id === id);
+        if (!note) {
             return;
         }
 
-        const siblings = allNodes
-            .filter((entry) => entry.locality === node.locality && (entry.parentId ?? null) === (node.parentId ?? null))
-            .sort((left, right) => this.compareNodes(left, right));
+        const siblings = allNotes
+            .filter((entry) => entry.locality === note.locality)
+            .sort((left, right) => this.compareNotes(left, right));
 
         siblings.forEach((entry, index) => {
             if (entry.sortOrder === undefined || entry.sortOrder === null) {
@@ -247,176 +147,134 @@ export class NoteStore {
         current.sortOrder = swap.sortOrder;
         swap.sortOrder = temp;
 
-        await this.persistNodes(allNodes);
+        await this.persistNotes(allNotes);
     }
 
-    /** Normalize stored node data into the current schema. */
-    private migrateNode(node: NoteNode, normalizeLegacyIcon = false): NoteNode {
-        const kind = node.kind === 'folder' || node.kind === 'note'
-            ? node.kind
-            : (Object.prototype.hasOwnProperty.call(node as object, 'content') ? 'note' : 'folder');
+    private normalizePersistedNotes(rawNotes: readonly unknown[], locality: ButtonLocality): NoteConfig[] {
+        return rawNotes
+            .map((entry) => {
+                if (!entry || typeof entry !== 'object') {
+                    return null;
+                }
 
-        if (kind === 'folder') {
-            const icon = normalizeLegacyIcon
-                ? normalizePersistedIcon('folder', node.icon)
-                : (node.icon?.trim() || DEFAULT_NOTE_FOLDER_ICON);
-            return {
-                id: node.id || generateId(),
-                name: node.name || '',
-                locality: node.locality === 'Local' ? 'Local' : 'Global',
-                parentId: node.parentId ?? null,
-                kind: 'folder',
-                icon,
-                colour: node.colour || '',
-                sortOrder: node.sortOrder
-            };
+                return this.migrateNote({ ...(entry as Record<string, unknown>), locality }, true);
+            })
+            .filter((entry): entry is NoteConfig => !!entry)
+            .sort((left, right) => this.compareNotes(left, right));
+    }
+
+    private migrateNote(raw: unknown, normalizeLegacyIcon = false): NoteConfig | null {
+        if (!raw || typeof raw !== 'object') {
+            return null;
         }
 
-        const raw = node as NoteConfig;
+        const candidate = raw as Record<string, unknown>;
+        const explicitKind = typeof candidate.kind === 'string' ? candidate.kind : undefined;
+        const hasContent = Object.prototype.hasOwnProperty.call(candidate, 'content');
+        if ((explicitKind && explicitKind !== 'note') || (!explicitKind && !hasContent)) {
+            return null;
+        }
+
+        const parentId = candidate.parentId;
+        if (typeof parentId === 'string' && parentId.trim().length > 0) {
+            return null;
+        }
+
         const icon = normalizeLegacyIcon
-            ? normalizePersistedIcon('note', raw.icon)
-            : (raw.icon?.trim() || DEFAULT_NOTE_ICON);
+            ? normalizePersistedIcon(typeof candidate.icon === 'string' ? candidate.icon : undefined)
+            : ((typeof candidate.icon === 'string' && candidate.icon.trim()) ? candidate.icon.trim() : getDefaultNoteIcon());
+
         return {
-            id: raw.id || generateId(),
-            name: raw.name || '',
-            locality: raw.locality === 'Local' ? 'Local' : 'Global',
-            parentId: raw.parentId ?? null,
-            kind: 'note',
+            id: typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id : generateId(),
+            name: typeof candidate.name === 'string' ? candidate.name : '',
+            locality: candidate.locality === 'Local' ? 'Local' : 'Global',
+            category: typeof candidate.category === 'string' && candidate.category.trim() ? candidate.category : 'General',
             icon,
-            colour: raw.colour || '',
-            sortOrder: raw.sortOrder,
-            content: raw.content || '',
-            format: raw.format === 'Markdown' ? 'Markdown' : 'PlainText',
-            promptEnabled: raw.promptEnabled ?? false,
-            copilotModel: raw.copilotModel || '',
-            copilotMode: raw.copilotMode || 'agent',
-            copilotAttachFiles: Array.isArray(raw.copilotAttachFiles) ? raw.copilotAttachFiles.slice() : [],
-            copilotAttachActiveFile: raw.copilotAttachActiveFile ?? false,
-            userTokens: Array.isArray(raw.userTokens) ? raw.userTokens.map((token) => ({ ...token })) : [],
-            updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now()
+            colour: typeof candidate.colour === 'string' ? candidate.colour : '',
+            sortOrder: typeof candidate.sortOrder === 'number' ? candidate.sortOrder : undefined,
+            content: typeof candidate.content === 'string' ? candidate.content : '',
+            format: candidate.format === 'Markdown' ? 'Markdown' : 'PlainText',
+            defaultAction: normalizeDefaultAction(candidate.defaultAction),
+            promptEnabled: typeof candidate.promptEnabled === 'boolean' ? candidate.promptEnabled : false,
+            copilotModel: typeof candidate.copilotModel === 'string' ? candidate.copilotModel : '',
+            copilotMode: typeof candidate.copilotMode === 'string' ? candidate.copilotMode : 'agent',
+            copilotAttachFiles: Array.isArray(candidate.copilotAttachFiles)
+                ? candidate.copilotAttachFiles.filter((entry): entry is string => typeof entry === 'string')
+                : [],
+            copilotAttachActiveFile: typeof candidate.copilotAttachActiveFile === 'boolean' ? candidate.copilotAttachActiveFile : false,
+            userTokens: Array.isArray(candidate.userTokens)
+                ? candidate.userTokens
+                    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+                    .map((entry) => ({ ...entry })) as unknown as NoteConfig['userTokens']
+                : [],
+            updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : Date.now()
         };
     }
 
-    /** Clone a node so edits do not mutate cached objects. */
-    private cloneNode(node: NoteNode): NoteNode {
-        const migrated = this.migrateNode(node);
-        if (migrated.kind === 'folder') {
-            return { ...migrated };
-        }
+    private cloneNote(note: NoteConfig): NoteConfig {
         return {
-            ...migrated,
-            copilotAttachFiles: migrated.copilotAttachFiles.slice(),
-            userTokens: (migrated.userTokens || []).map((token) => ({ ...token }))
+            ...note,
+            copilotAttachFiles: note.copilotAttachFiles.slice(),
+            userTokens: (note.userTokens || []).map((token) => ({ ...token }))
         };
     }
 
-    /** Compare nodes for display and sibling ordering. */
-    private compareNodes(left: NoteNode, right: NoteNode): number {
+    private compareNotes(left: NoteConfig, right: NoteConfig): number {
         const order = (left.sortOrder ?? 99999) - (right.sortOrder ?? 99999);
         if (order !== 0) {
             return order;
         }
-        if (left.kind !== right.kind) {
-            return left.kind === 'folder' ? -1 : 1;
+
+        const categoryOrder = left.category.localeCompare(right.category);
+        if (categoryOrder !== 0) {
+            return categoryOrder;
         }
+
         return left.name.localeCompare(right.name);
     }
 
-    /** Persist both scopes and notify listeners once. */
-    private async persistNodes(nodes: NoteNode[]): Promise<void> {
-        const globalNodes = nodes.filter((entry) => entry.locality === 'Global').map((entry) => this.cloneNode(entry));
-        const localNodes = nodes.filter((entry) => entry.locality === 'Local').map((entry) => this.cloneNode(entry));
-        const currentGlobalNodes = this.getGlobalNodes().map((entry) => this.cloneNode(entry));
-        const currentLocalNodes = this.getLocalNodes().map((entry) => this.cloneNode(entry));
+    private async persistNotes(notes: NoteConfig[]): Promise<void> {
+        const nextGlobalNotes = notes
+            .filter((entry) => entry.locality === 'Global')
+            .map((entry) => this.cloneNote(entry));
+        const nextLocalNotes = notes
+            .filter((entry) => entry.locality === 'Local')
+            .map((entry) => this.cloneNote(entry));
+        const currentGlobalNotes = this.getGlobalNodes().map((entry) => this.cloneNote(entry));
+        const currentLocalNotes = this.getLocalNodes().map((entry) => this.cloneNote(entry));
 
-        const config = vscode.workspace.getConfiguration('buttonfu');
-        const updates: Array<Thenable<void>> = [];
-        const shouldUpdateGlobal = !this.areNodeListsEqual(currentGlobalNodes, globalNodes);
-        const shouldUpdateLocal = !this.areNodeListsEqual(currentLocalNodes, localNodes);
-
+        const shouldUpdateGlobal = !this.areNoteListsEqual(currentGlobalNotes, nextGlobalNotes);
+        const shouldUpdateLocal = !this.areNoteListsEqual(currentLocalNotes, nextLocalNotes);
         if (!shouldUpdateGlobal && !shouldUpdateLocal) {
             return;
         }
 
+        const updates: Array<Thenable<void>> = [];
+        const config = vscode.workspace.getConfiguration('buttonfu');
         this.suppressGlobalConfigRefresh = shouldUpdateGlobal;
 
         try {
             if (shouldUpdateGlobal) {
-                updates.push(config.update('globalNotes', globalNodes, vscode.ConfigurationTarget.Global));
+                updates.push(config.update('globalNotes', nextGlobalNotes, vscode.ConfigurationTarget.Global));
             }
             if (shouldUpdateLocal) {
-                updates.push(this.context.workspaceState.update(LOCAL_NOTES_KEY, localNodes));
+                updates.push(this.context.workspaceState.update(LOCAL_NOTES_KEY, nextLocalNotes));
             }
             await Promise.all(updates);
         } finally {
             this.suppressGlobalConfigRefresh = false;
         }
+
         this._onDidChange.fire();
     }
 
-    /** Compare two node arrays without triggering needless persistence churn. */
-    private areNodeListsEqual(left: NoteNode[], right: NoteNode[]): boolean {
+    private areNoteListsEqual(left: NoteConfig[], right: NoteConfig[]): boolean {
         return JSON.stringify(left) === JSON.stringify(right);
     }
 
-    /** Validate a parent relationship for a node. */
-    private isValidParent(node: NoteNode, allNodes: NoteNode[], parentId: string | null): boolean {
-        if (!parentId) {
-            return true;
-        }
-
-        const parent = allNodes.find((entry) => entry.id === parentId);
-        if (!parent || parent.kind !== 'folder') {
-            return false;
-        }
-        if (parent.locality !== node.locality) {
-            return false;
-        }
-        if (parent.id === node.id) {
-            return false;
-        }
-        if (node.kind === 'folder') {
-            const descendants = new Set(this.collectSubtreeIds(node.id, allNodes));
-            if (descendants.has(parentId)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** Compute the next sort order for a sibling set. */
-    private getNextSortOrder(nodes: NoteNode[], locality: ButtonLocality, parentId: string | null, excludeId?: string): number {
-        const siblings = nodes.filter((entry) =>
-            entry.locality === locality &&
-            (entry.parentId ?? null) === parentId &&
-            entry.id !== excludeId
-        );
+    private getNextSortOrder(notes: NoteConfig[], locality: ButtonLocality, excludeId?: string): number {
+        const siblings = notes.filter((entry) => entry.locality === locality && entry.id !== excludeId);
         const max = siblings.reduce((current, entry) => Math.max(current, entry.sortOrder ?? 0), -1);
         return max + 10;
-    }
-
-    /** Collect a folder subtree or single note ID. */
-    private collectSubtreeIds(id: string, allNodes: NoteNode[]): string[] {
-        const root = allNodes.find((entry) => entry.id === id);
-        if (!root) {
-            return [];
-        }
-
-        const result: string[] = [];
-        const queue: string[] = [id];
-        while (queue.length > 0) {
-            const currentId = queue.shift();
-            if (!currentId || result.includes(currentId)) {
-                continue;
-            }
-
-            result.push(currentId);
-            for (const child of allNodes) {
-                if ((child.parentId ?? null) === currentId) {
-                    queue.push(child.id);
-                }
-            }
-        }
-        return result;
     }
 }

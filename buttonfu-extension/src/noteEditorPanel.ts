@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { buildInfo, getBuildInfoString } from './buildInfo';
-import { AVAILABLE_ICONS, ButtonLocality, COPILOT_MODES, NoteNode, NoteNodeKind, createDefaultNote, createDefaultNoteFolder } from './types';
+import { AVAILABLE_ICONS, ButtonLocality, COPILOT_MODES, NOTE_DEFAULT_ACTIONS, NoteConfig, createDefaultNote } from './types';
 import { NoteStore } from './noteStore';
 import {
     getAutocompleteStyles,
@@ -19,13 +19,11 @@ import {
 
 interface NoteEditorRequest {
     mode: 'new' | 'edit';
-    kind: NoteNodeKind;
     nodeId?: string;
     locality: ButtonLocality;
-    parentId: string | null;
 }
 
-/** Focused note editor panel for creating and editing a single note or folder at a time. */
+/** Focused note editor panel for creating and editing a single note at a time. */
 export class NoteEditorPanel {
     public static currentPanel: NoteEditorPanel | undefined;
     private static _globalState: vscode.Memento | undefined;
@@ -36,9 +34,7 @@ export class NoteEditorPanel {
 
     private currentRequest: NoteEditorRequest = {
         mode: 'new',
-        kind: 'note',
-        locality: 'Global',
-        parentId: null
+        locality: 'Global'
     };
 
     public static configure(globalState: vscode.Memento): void {
@@ -49,7 +45,7 @@ export class NoteEditorPanel {
         this.panel = panel;
         this.panel.webview.html = this.getHtmlContent();
 
-        this.panel.webview.onDidReceiveMessage(async (message) => this.handleMessage(message), null, this.disposables);
+        this.panel.webview.onDidReceiveMessage((message) => this.handleMessage(message), null, this.disposables);
         this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
         this.panel.onDidChangeViewState((event) => {
             if (event.webviewPanel.visible) {
@@ -84,24 +80,20 @@ export class NoteEditorPanel {
         NoteEditorPanel.currentPanel = new NoteEditorPanel(panel, store, extensionUri);
     }
 
-    /** Open the editor in new-node mode. */
+    /** Open the editor in new-note mode. */
     public static createOrShowWithNew(
         store: NoteStore,
         extensionUri: vscode.Uri,
-        kind: NoteNodeKind,
-        locality: ButtonLocality = 'Global',
-        parentId: string | null = null
+        locality: ButtonLocality = 'Global'
     ): void {
         NoteEditorPanel.createOrShow(store, extensionUri);
         NoteEditorPanel.currentPanel?.setRequest({
             mode: 'new',
-            kind,
-            locality,
-            parentId
+            locality
         });
     }
 
-    /** Open the editor for an existing note or folder. */
+    /** Open the editor for an existing note. */
     public static createOrShowWithNode(store: NoteStore, extensionUri: vscode.Uri, nodeId: string): void {
         const node = store.getNode(nodeId);
         if (!node) {
@@ -112,10 +104,8 @@ export class NoteEditorPanel {
         NoteEditorPanel.createOrShow(store, extensionUri);
         NoteEditorPanel.currentPanel?.setRequest({
             mode: 'edit',
-            kind: node.kind,
             nodeId: node.id,
-            locality: node.locality,
-            parentId: node.parentId ?? null
+            locality: node.locality
         });
     }
 
@@ -134,7 +124,9 @@ export class NoteEditorPanel {
         NoteEditorPanel.currentPanel = undefined;
         while (this.disposables.length > 0) {
             const disposable = this.disposables.pop();
-            if (disposable) { disposable.dispose(); }
+            if (disposable) {
+                disposable.dispose();
+            }
         }
     }
 
@@ -145,13 +137,11 @@ export class NoteEditorPanel {
                 break;
             case 'saveNode': {
                 try {
-                    const saved = await this.store.saveNode(message.node as NoteNode);
+                    const saved = await this.store.saveNode((message.note ?? message.node) as NoteConfig);
                     this.currentRequest = {
                         mode: 'edit',
-                        kind: saved.kind,
                         nodeId: saved.id,
-                        locality: saved.locality,
-                        parentId: saved.parentId ?? null
+                        locality: saved.locality
                     };
                     this.postState();
                 } catch (error) {
@@ -173,9 +163,7 @@ export class NoteEditorPanel {
                 if (!this.store.getNode(nodeId)) {
                     this.currentRequest = {
                         mode: 'new',
-                        kind: node.kind,
-                        locality: node.locality,
-                        parentId: node.parentId ?? null
+                        locality: node.locality
                     };
                     this.postState();
                 }
@@ -219,10 +207,6 @@ export class NoteEditorPanel {
     }
 
     private postState(): void {
-        if (!this.panel.visible) {
-            return;
-        }
-
         const resolvedRequest = this.resolveRequest();
         this.panel.webview.postMessage({
             type: 'setState',
@@ -239,13 +223,17 @@ export class NoteEditorPanel {
             if (node) {
                 return {
                     mode: 'edit',
-                    kind: node.kind,
                     nodeId: node.id,
-                    locality: node.locality,
-                    parentId: node.parentId ?? null
+                    locality: node.locality
                 };
             }
+
+            return {
+                mode: 'new',
+                locality: this.currentRequest.locality
+            };
         }
+
         return this.currentRequest;
     }
 
@@ -253,6 +241,8 @@ export class NoteEditorPanel {
         const nonce = getNonce();
         const iconsJson = JSON.stringify(AVAILABLE_ICONS);
         const modesJson = JSON.stringify(COPILOT_MODES);
+        const defaultActionsJson = JSON.stringify(NOTE_DEFAULT_ACTIONS);
+        const defaultNoteJson = JSON.stringify(createDefaultNote());
         const autocompleteStyles = getAutocompleteStyles();
         const collapsibleCardStyles = getCollapsibleCardStyles();
         const colourFieldStyles = getColourFieldStyles();
@@ -455,6 +445,10 @@ export class NoteEditorPanel {
             border: 1px solid var(--vscode-input-border);
             border-radius: 4px;
         }
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
         .field-error {
             display: none;
             font-size: 11px;
@@ -467,10 +461,6 @@ export class NoteEditorPanel {
         }
         input.input-error:focus {
             border-color: var(--vscode-inputValidation-errorBorder, #f44747);
-        }
-        textarea {
-            min-height: 120px;
-            resize: vertical;
         }
 ${autocompleteStyles}
 ${collapsibleCardStyles}
@@ -622,87 +612,82 @@ ${iconPickerStyles}
             </div>
 
             <div class="editor-body">
-        <div class="layout">
-            <div class="field">
-                <label for="nodeName">Name</label>
-                <input type="text" id="nodeName" placeholder="Enter a name" />
-                <span class="field-error" id="nodeNameError"></span>
-            </div>
-            <div class="field">
-                <label for="nodeKind">Kind</label>
-                <select id="nodeKind">
-                    <option value="note">Note</option>
-                    <option value="folder">Folder</option>
-                </select>
-            </div>
-            <div class="field">
-                <label for="nodeLocality">Scope</label>
-                <select id="nodeLocality">
-                    <option value="Global">Global</option>
-                    <option value="Local">Workspace</option>
-                </select>
-            </div>
-            <div class="field">
-                <label for="nodeParent">Parent Folder</label>
-                <select id="nodeParent"></select>
-            </div>
-            <div class="field" style="position:relative">
-                <label for="nodeIcon">Icon</label>
+                <div class="layout">
+                    <div class="field">
+                        <label for="nodeName">Name</label>
+                        <input type="text" id="nodeName" placeholder="Enter a name" />
+                        <span class="field-error" id="nodeNameError"></span>
+                    </div>
+                    <div class="field">
+                        <label for="noteCategory">Category</label>
+                        <input type="text" id="noteCategory" placeholder="General" />
+                    </div>
+                    <div class="field">
+                        <label for="nodeLocality">Scope</label>
+                        <select id="nodeLocality"></select>
+                    </div>
+                    <div class="field">
+                        <label for="noteDefaultAction">Default Click Action</label>
+                        <select id="noteDefaultAction"></select>
+                        <div class="field-help">The main split-button click in the sidebar uses this action.</div>
+                    </div>
+                    <div class="field" style="position:relative">
+                        <label for="nodeIcon">Icon</label>
 ${noteIconPickerMarkup}
-            </div>
-            <div class="field">
-                <label for="nodeColour">Colour</label>
+                    </div>
+                    <div class="field">
+                        <label for="nodeColour">Colour</label>
 ${noteColourFieldMarkup}
-            </div>
-        </div>
+                    </div>
+                </div>
 
-        <div class="note-section" id="noteSection">
-            <div class="layout">
-                <div class="field">
-                    <label for="noteFormat">Format</label>
-                    <select id="noteFormat">
-                        <option value="PlainText">Plain Text</option>
-                        <option value="Markdown">Markdown</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label for="noteCopilotMode">Copilot Mode</label>
-                    <select id="noteCopilotMode"></select>
-                </div>
-                <div class="field">
-                    <label for="noteCopilotModel">Copilot Model</label>
+                <div class="note-section">
+                    <div class="layout">
+                        <div class="field">
+                            <label for="noteFormat">Format</label>
+                            <select id="noteFormat">
+                                <option value="PlainText">Plain Text</option>
+                                <option value="Markdown">Markdown</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label for="noteCopilotMode">Copilot Mode</label>
+                            <select id="noteCopilotMode"></select>
+                        </div>
+                        <div class="field">
+                            <label for="noteCopilotModel">Copilot Model</label>
 ${noteModelAutocompleteMarkup}
-                </div>
-                <div class="field full setting-row">
-                    <div class="setting-row-copy">
-                        <div class="setting-row-title">Enable token resolution</div>
-                        <div class="setting-row-desc">Resolve ButtonFu tokens before Copy, Insert, and Send to Copilot.</div>
+                        </div>
+                        <div class="field full setting-row">
+                            <div class="setting-row-copy">
+                                <div class="setting-row-title">Enable token resolution</div>
+                                <div class="setting-row-desc">Resolve ButtonFu tokens before Copy, Insert, and Send to Copilot.</div>
+                            </div>
+                            <input type="checkbox" class="setting-checkbox" id="notePromptEnabled" />
+                        </div>
+                        <div class="field full">
+                            <label for="noteContent">Content</label>
+                            <textarea id="noteContent" rows="12" placeholder="Write the note content here"></textarea>
+                        </div>
+                        <div class="field full setting-row">
+                            <div class="setting-row-copy">
+                                <div class="setting-row-title">Attach active editor file</div>
+                                <div class="setting-row-desc">Include the current editor file automatically when sending this note to Copilot.</div>
+                            </div>
+                            <input type="checkbox" class="setting-checkbox" id="noteAttachActiveFile" />
+                        </div>
+                        <div class="field full">
+                            <div class="field-header">
+                                <label for="noteAttachFiles">Attached Files</label>
+                                <button class="btn btn-secondary" id="pickFilesBtn"><span class="codicon codicon-files"></span> Pick Attachments</button>
+                            </div>
+                            <textarea id="noteAttachFiles" rows="4" placeholder="One file path per line"></textarea>
+                            <div class="field-help">Use one workspace-relative or absolute file path per line.</div>
+                        </div>
                     </div>
-                    <input type="checkbox" class="setting-checkbox" id="notePromptEnabled" />
-                </div>
-                <div class="field full">
-                    <label for="noteContent">Content</label>
-                    <textarea id="noteContent" rows="12" placeholder="Write the note content here"></textarea>
-                </div>
-                <div class="field full setting-row">
-                    <div class="setting-row-copy">
-                        <div class="setting-row-title">Attach active editor file</div>
-                        <div class="setting-row-desc">Include the current editor file automatically when sending this note to Copilot.</div>
-                    </div>
-                    <input type="checkbox" class="setting-checkbox" id="noteAttachActiveFile" />
-                </div>
-                <div class="field full">
-                    <div class="field-header">
-                        <label for="noteAttachFiles">Attached Files</label>
-                        <button class="btn btn-secondary" id="pickFilesBtn"><span class="codicon codicon-files"></span> Pick Attachments</button>
-                    </div>
-                    <textarea id="noteAttachFiles" rows="4" placeholder="One file path per line"></textarea>
-                    <div class="field-help">Use one workspace-relative or absolute file path per line.</div>
-                </div>
-            </div>
 
 ${userTokensCardMarkup}
-        </div>
+                </div>
             </div>
         </div>
     </div>
@@ -711,6 +696,8 @@ ${userTokensCardMarkup}
         const vscode = acquireVsCodeApi();
         const availableIcons = ${iconsJson};
         const copilotModes = ${modesJson};
+        const noteDefaultActions = ${defaultActionsJson};
+        const defaultNote = ${defaultNoteJson};
 ${sharedControlScript}
 
         let currentNodes = [];
@@ -721,7 +708,8 @@ ${sharedControlScript}
         let currentUserTokens = [];
         let editingTokenIndex = -1;
         let cachedModels = null;
-        let lastKindSelection = 'note';
+        let lastRequestKey = '';
+        let draftLocality = null;
         let uiState = Object.assign({}, ${initialUiStateJson}, typeof vscode.getState === 'function' ? (vscode.getState() || {}) : {});
         const iconPicker = createButtonFuIconPicker({
             icons: availableIcons,
@@ -771,26 +759,44 @@ ${sharedControlScript}
             return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        function getDefaultIcon(kind) {
-            return kind === 'folder' ? 'folder' : 'note';
-        }
-
-        function updateEditorTitle(kind) {
-            document.getElementById('editorTitle').textContent = currentRequest && currentRequest.mode === 'edit'
-                ? 'Edit ' + (kind === 'folder' ? 'Folder' : 'Note')
-                : 'Create ' + (kind === 'folder' ? 'Folder' : 'Note');
-        }
-
-        function syncDefaultIconForKind(nextKind) {
-            const currentIcon = document.getElementById('nodeIcon').value.trim();
-            if (!currentIcon || currentIcon === getDefaultIcon(lastKindSelection)) {
-                iconPicker.setValue(getDefaultIcon(nextKind));
-            }
-            lastKindSelection = nextKind;
-        }
-
         function clone(value) {
             return JSON.parse(JSON.stringify(value));
+        }
+
+        function getDefaultActionLabel(action) {
+            switch (action) {
+                case 'insert': return 'Insert into Active Editor';
+                case 'copilot': return 'Send to Copilot Chat';
+                case 'copy': return 'Copy to Clipboard';
+                default: return 'Open / Preview';
+            }
+        }
+
+        function getRequestKey(request) {
+            if (!request) {
+                return '';
+            }
+
+            if (request.mode === 'edit') {
+                return 'edit:' + (request.nodeId || '');
+            }
+
+            return 'new:' + (request.locality || 'Global');
+        }
+
+        function focusNameFieldIfNeeded(requestKey) {
+            if (!currentRequest || currentRequest.mode !== 'new' || requestKey === lastRequestKey) {
+                return;
+            }
+
+            const nameInput = document.getElementById('nodeName');
+            requestAnimationFrame(() => {
+                nameInput.focus();
+                const valueLength = nameInput.value.length;
+                if (typeof nameInput.setSelectionRange === 'function') {
+                    nameInput.setSelectionRange(valueLength, valueLength);
+                }
+            });
         }
 
         function renderStaticLists() {
@@ -799,70 +805,19 @@ ${sharedControlScript}
                 const label = mode.charAt(0).toUpperCase() + mode.slice(1);
                 return '<option value="' + escapeHtml(mode) + '">' + escapeHtml(label) + '</option>';
             }).join('');
+
+            const defaultActionSelect = document.getElementById('noteDefaultAction');
+            defaultActionSelect.innerHTML = noteDefaultActions.map(action => {
+                return '<option value="' + escapeHtml(action) + '">' + escapeHtml(getDefaultActionLabel(action)) + '</option>';
+            }).join('');
         }
 
-        function isFolder(node) {
-            return node && node.kind === 'folder';
-        }
-
-        function getDescendantIds(nodeId) {
-            const result = [];
-            const queue = [nodeId];
-            while (queue.length > 0) {
-                const currentId = queue.shift();
-                if (!currentId || result.includes(currentId)) {
-                    continue;
-                }
-                result.push(currentId);
-                currentNodes.forEach(node => {
-                    if ((node.parentId || null) === currentId) {
-                        queue.push(node.id);
-                    }
-                });
-            }
-            return result;
-        }
-
-        function getFolderPath(nodeId) {
-            const parts = [];
-            let current = currentNodes.find(node => node.id === nodeId);
-            while (current && current.parentId) {
-                const parent = currentNodes.find(node => node.id === current.parentId && node.kind === 'folder');
-                if (!parent) break;
-                parts.unshift(parent.name);
-                current = parent;
-            }
-            return parts.join('/');
-        }
-
-        function renderParentOptions() {
-            const locality = document.getElementById('nodeLocality').value;
-            const currentId = currentNode ? currentNode.id : '';
-            const blocked = currentNode && currentNode.kind === 'folder' ? new Set(getDescendantIds(currentId)) : new Set();
-            const parentSelect = document.getElementById('nodeParent');
-
-            const rootLabel = locality === 'Global'
-                ? 'Global Root'
-                : (workspaceName ? 'Workspace Root [' + workspaceName + ']' : 'Workspace Root');
-
-            const folders = currentNodes
-                .filter(node => node.kind === 'folder' && node.locality === locality && node.id !== currentId && !blocked.has(node.id))
-                .sort((a, b) => {
-                    const pathA = (getFolderPath(a.id) + '/' + a.name).toLowerCase();
-                    const pathB = (getFolderPath(b.id) + '/' + b.name).toLowerCase();
-                    return pathA.localeCompare(pathB);
-                });
-
-            let html = '<option value="">' + escapeHtml(rootLabel) + '</option>';
-            folders.forEach(folder => {
-                const label = getFolderPath(folder.id);
-                const description = label ? label + '/' + folder.name : folder.name;
-                html += '<option value="' + escapeHtml(folder.id) + '">' + escapeHtml(description) + '</option>';
-            });
-            parentSelect.innerHTML = html;
-
-            const desiredParentId = currentNode ? (currentNode.parentId || '') : (currentRequest.parentId || '');
-            parentSelect.value = desiredParentId;
+        function renderLocalityOptions(selectedLocality) {
+            const localitySelect = document.getElementById('nodeLocality');
+            const workspaceLabel = workspaceName ? 'Workspace [' + workspaceName + ']' : 'Workspace';
+            localitySelect.innerHTML = '<option value="Global">Global</option><option value="Local">' + escapeHtml(workspaceLabel) + '</option>';
+            localitySelect.value = selectedLocality === 'Local' ? 'Local' : 'Global';
+            localitySelect.disabled = false;
         }
 
         function renderTokenTable() {
@@ -879,12 +834,10 @@ ${sharedControlScript}
                     '<td>' + escapeHtml(token.dataType || 'String') + '</td>' +
                     '<td>' + escapeHtml(token.defaultValue || '') + '</td>' +
                     '<td>' + (token.required ? 'Yes' : 'No') + '</td>' +
-                    '<td>' +
-                    '<div class="token-actions">' +
+                    '<td><div class="token-actions">' +
                     '<button class="btn btn-secondary" data-token-edit="' + index + '">Edit</button>' +
                     '<button class="btn btn-secondary" data-token-delete="' + index + '">Delete</button>' +
-                    '</div>' +
-                    '</td>' +
+                    '</div></td>' +
                     '</tr>';
             });
             html += '</tbody></table>';
@@ -906,6 +859,7 @@ ${sharedControlScript}
             if (!token) {
                 return;
             }
+
             editingTokenIndex = index;
             document.getElementById('tokenName').value = token.token || '';
             document.getElementById('tokenLabel').value = token.label || '';
@@ -934,15 +888,7 @@ ${sharedControlScript}
                 return;
             }
 
-            const payload = {
-                token,
-                label,
-                description,
-                dataType,
-                defaultValue,
-                required
-            };
-
+            const payload = { token, label, description, dataType, defaultValue, required };
             if (editingTokenIndex >= 0) {
                 currentUserTokens[editingTokenIndex] = payload;
             } else {
@@ -951,11 +897,6 @@ ${sharedControlScript}
 
             renderTokenTable();
             clearTokenEditor();
-        }
-
-        function updateNoteSectionVisibility() {
-            const isNote = document.getElementById('nodeKind').value === 'note';
-            document.getElementById('noteSection').style.display = isNote ? 'block' : 'none';
         }
 
         function clearNameValidation() {
@@ -988,40 +929,31 @@ ${sharedControlScript}
         }
 
         function buildSavePayload() {
-            const kind = document.getElementById('nodeKind').value;
-            const locality = document.getElementById('nodeLocality').value;
-            const base = {
-                id: currentNode ? currentNode.id : '',
-                name: document.getElementById('nodeName').value.trim(),
-                locality,
-                parentId: document.getElementById('nodeParent').value || null,
-                kind,
-                icon: document.getElementById('nodeIcon').value.trim() || getDefaultIcon(kind),
-                colour: document.getElementById('nodeColour').value.trim(),
-                sortOrder: currentNode ? currentNode.sortOrder : undefined
-            };
-
-            if (!base.name) {
+            const name = document.getElementById('nodeName').value.trim();
+            if (!name) {
                 showNameValidationError();
                 document.getElementById('nodeName').focus();
                 return null;
             }
 
-            if (kind === 'folder') {
-                return base;
-            }
-
             return {
-                ...base,
+                id: currentNode ? currentNode.id : '',
+                name,
+                locality: document.getElementById('nodeLocality').value,
+                category: document.getElementById('noteCategory').value.trim() || 'General',
+                icon: document.getElementById('nodeIcon').value.trim() || defaultNote.icon || 'note',
+                colour: document.getElementById('nodeColour').value.trim(),
+                sortOrder: currentNode ? currentNode.sortOrder : undefined,
                 content: document.getElementById('noteContent').value,
                 format: document.getElementById('noteFormat').value,
+                defaultAction: document.getElementById('noteDefaultAction').value,
                 promptEnabled: document.getElementById('notePromptEnabled').checked,
                 copilotModel: document.getElementById('noteCopilotModel').value.trim(),
                 copilotMode: document.getElementById('noteCopilotMode').value,
                 copilotAttachFiles: document.getElementById('noteAttachFiles').value.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean),
                 copilotAttachActiveFile: document.getElementById('noteAttachActiveFile').checked,
                 userTokens: currentUserTokens.map(token => Object.assign({}, token)),
-                updatedAt: currentNode && currentNode.kind === 'note' ? currentNode.updatedAt : Date.now()
+                updatedAt: currentNode ? currentNode.updatedAt : Date.now()
             };
         }
 
@@ -1030,60 +962,40 @@ ${sharedControlScript}
             currentRequest = payload.request;
             workspaceName = payload.workspaceName || null;
             hasWorkspace = !!payload.hasWorkspace;
+            const requestKey = getRequestKey(currentRequest);
+            if (requestKey !== lastRequestKey) {
+                draftLocality = null;
+            }
             currentNode = currentRequest.mode === 'edit'
                 ? currentNodes.find(node => node.id === currentRequest.nodeId) || null
                 : null;
 
-            const workingKind = currentNode ? currentNode.kind : currentRequest.kind;
-            lastKindSelection = workingKind;
-            updateEditorTitle(workingKind);
-
-            document.getElementById('nodeKind').value = workingKind;
-            document.getElementById('nodeKind').disabled = currentRequest.mode === 'edit';
-            document.getElementById('nodeName').value = currentNode ? (currentNode.name || '') : '';
+            const workingNote = currentNode ? clone(currentNode) : Object.assign({}, clone(defaultNote), { locality: currentRequest.locality || 'Global' });
+            if (draftLocality === 'Global' || draftLocality === 'Local') {
+                workingNote.locality = draftLocality;
+            }
+            document.getElementById('editorTitle').textContent = currentRequest.mode === 'edit' ? 'Edit Note' : 'Create Note';
+            document.getElementById('nodeName').value = workingNote.name || '';
+            document.getElementById('noteCategory').value = workingNote.category || 'General';
             clearNameValidation();
-            document.getElementById('nodeLocality').value = currentNode ? currentNode.locality : currentRequest.locality;
-            document.getElementById('nodeLocality').disabled = !hasWorkspace && (currentNode ? currentNode.locality === 'Local' : false);
-            iconPicker.setValue(currentNode ? (currentNode.icon || '') : getDefaultIcon(workingKind));
-            colourField.setValue(currentNode ? (currentNode.colour || '') : '');
-
-            if (currentNode && currentNode.kind === 'note') {
-                document.getElementById('noteFormat').value = currentNode.format || 'PlainText';
-                document.getElementById('notePromptEnabled').checked = !!currentNode.promptEnabled;
-                document.getElementById('noteCopilotModel').value = currentNode.copilotModel || '';
-                document.getElementById('noteCopilotMode').value = currentNode.copilotMode || 'agent';
-                document.getElementById('noteAttachFiles').value = (currentNode.copilotAttachFiles || []).join('\\n');
-                document.getElementById('noteAttachActiveFile').checked = !!currentNode.copilotAttachActiveFile;
-                document.getElementById('noteContent').value = currentNode.content || '';
-                currentUserTokens = (currentNode.userTokens || []).map(token => Object.assign({}, token));
-            } else {
-                const defaults = workingKind === 'folder'
-                    ? ${JSON.stringify(createDefaultNoteFolder())}
-                    : ${JSON.stringify(createDefaultNote())};
-                document.getElementById('noteFormat').value = defaults.format || 'PlainText';
-                document.getElementById('notePromptEnabled').checked = !!defaults.promptEnabled;
-                document.getElementById('noteCopilotModel').value = defaults.copilotModel || '';
-                document.getElementById('noteCopilotMode').value = defaults.copilotMode || 'agent';
-                document.getElementById('noteAttachFiles').value = '';
-                document.getElementById('noteAttachActiveFile').checked = !!defaults.copilotAttachActiveFile;
-                document.getElementById('noteContent').value = '';
-                currentUserTokens = [];
-            }
-
-            if (!hasWorkspace) {
-                document.getElementById('nodeLocality').innerHTML = '<option value="Global">Global</option>';
-                document.getElementById('nodeLocality').value = 'Global';
-            } else {
-                document.getElementById('nodeLocality').innerHTML = '<option value="Global">Global</option><option value="Local">Workspace</option>';
-                document.getElementById('nodeLocality').value = currentNode ? currentNode.locality : currentRequest.locality;
-            }
-
-            renderParentOptions();
+            renderLocalityOptions(workingNote.locality);
+            iconPicker.setValue(workingNote.icon || defaultNote.icon || 'note');
+            colourField.setValue(workingNote.colour || '');
+            document.getElementById('noteFormat').value = workingNote.format || 'PlainText';
+            document.getElementById('noteDefaultAction').value = workingNote.defaultAction || 'open';
+            document.getElementById('notePromptEnabled').checked = !!workingNote.promptEnabled;
+            document.getElementById('noteCopilotModel').value = workingNote.copilotModel || '';
+            document.getElementById('noteCopilotMode').value = workingNote.copilotMode || 'agent';
+            document.getElementById('noteAttachFiles').value = (workingNote.copilotAttachFiles || []).join('\\n');
+            document.getElementById('noteAttachActiveFile').checked = !!workingNote.copilotAttachActiveFile;
+            document.getElementById('noteContent').value = workingNote.content || '';
+            currentUserTokens = (workingNote.userTokens || []).map(token => Object.assign({}, token));
             renderTokenTable();
             clearTokenEditor();
-            updateNoteSectionVisibility();
             userTokensCard.setCollapsed(!!uiState.userTokensCollapsed);
             document.getElementById('deleteBtn').style.visibility = currentRequest.mode === 'edit' ? 'visible' : 'hidden';
+            focusNameFieldIfNeeded(requestKey);
+            lastRequestKey = requestKey;
         }
 
         window.addEventListener('message', (event) => {
@@ -1105,14 +1017,6 @@ ${sharedControlScript}
             }
         });
 
-        document.getElementById('nodeLocality').addEventListener('change', renderParentOptions);
-        document.getElementById('nodeKind').addEventListener('change', () => {
-            const nextKind = document.getElementById('nodeKind').value;
-            syncDefaultIconForKind(nextKind);
-            updateEditorTitle(nextKind);
-            updateNoteSectionVisibility();
-            renderParentOptions();
-        });
         document.getElementById('saveTokenBtn').addEventListener('click', saveToken);
         document.getElementById('clearTokenBtn').addEventListener('click', clearTokenEditor);
         document.getElementById('pickFilesBtn').addEventListener('click', () => vscode.postMessage({ type: 'pickFiles' }));
@@ -1125,11 +1029,14 @@ ${sharedControlScript}
         document.getElementById('saveBtn').addEventListener('click', () => {
             const payload = buildSavePayload();
             if (payload) {
-                vscode.postMessage({ type: 'saveNode', node: payload });
+                vscode.postMessage({ type: 'saveNode', note: payload });
             }
         });
         document.getElementById('nodeName').addEventListener('input', () => {
             syncNameValidation();
+        });
+        document.getElementById('nodeLocality').addEventListener('change', (event) => {
+            draftLocality = event.target.value === 'Local' ? 'Local' : 'Global';
         });
         document.getElementById('tokenTableWrap').addEventListener('click', (event) => {
             const editButton = event.target.closest('[data-token-edit]');
@@ -1137,6 +1044,7 @@ ${sharedControlScript}
                 editToken(Number(editButton.dataset.tokenEdit));
                 return;
             }
+
             const deleteButton = event.target.closest('[data-token-delete]');
             if (deleteButton) {
                 currentUserTokens.splice(Number(deleteButton.dataset.tokenDelete), 1);

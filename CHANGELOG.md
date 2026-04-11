@@ -4,6 +4,17 @@ All notable changes to ButtonFu are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Redesigned notes to render as split buttons inside the main ButtonFu sidebar, mixed into the same Global and Workspace category groups as regular buttons
+- Added a per-note default action for the main click while keeping Preview/Open, Insert, Send to Copilot, Copy, and Edit in the split-button dropdown
+- Removed the separate Notes tree view, note folders, and tree-node workflows in favour of a flat note model with category-based organisation
+
+### Fixed
+- New notes now focus the Name field immediately when the Note Editor opens
+- Note scope selection now stays editable and persists correctly while creating or editing notes, including workspace-scoped notes in smoke-tested hosts
+- Insert into Active Editor now opens a new untitled document populated with the note content when no editor is active
+- Note editor and sidebar note interactions now validate cleanly through the full `npm test` path, including the split-button webview flows and note editor state transitions
+
 ## [1.1.2] - 
 
 ### Added 

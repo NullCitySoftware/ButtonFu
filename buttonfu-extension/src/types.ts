@@ -62,44 +62,34 @@ export interface ButtonConfig {
     userTokens?: UserToken[];
 }
 
-/** The kind of note node stored in the notes tree */
-export type NoteNodeKind = 'folder' | 'note';
-
 /** Content format for note text */
 export type NoteContentFormat = 'PlainText' | 'Markdown';
 
-/** Shared fields for note folders and note items */
-export interface NoteNodeBase {
+/** Primary action triggered by clicking a note button. */
+export type NoteDefaultAction = 'open' | 'insert' | 'copilot' | 'copy';
+
+/** A saved note definition. */
+export interface NoteConfig {
     /** Unique identifier */
     id: string;
     /** Display name */
     name: string;
     /** Global or Local (workspace) */
     locality: ButtonLocality;
-    /** Parent folder ID, or null for the scope root */
-    parentId: string | null;
-    /** Folder or note */
-    kind: NoteNodeKind;
+    /** Grouping label shared with regular buttons */
+    category: string;
     /** Codicon icon name */
     icon: string;
-    /** Colour for the icon/node */
+    /** Colour for the note button */
     colour: string;
-    /** Sort position within the current parent */
+    /** Sort position within the locality */
     sortOrder?: number;
-}
-
-/** A folder in the notes tree */
-export interface NoteFolder extends NoteNodeBase {
-    kind: 'folder';
-}
-
-/** A note item in the notes tree */
-export interface NoteConfig extends NoteNodeBase {
-    kind: 'note';
     /** Note text content */
     content: string;
     /** Plain text or markdown */
     format: NoteContentFormat;
+    /** Default action for the main split-button click */
+    defaultAction: NoteDefaultAction;
     /** Whether prompt actions should resolve tokens before execution */
     promptEnabled?: boolean;
     /** For Copilot prompt actions: which model to use */
@@ -116,15 +106,15 @@ export interface NoteConfig extends NoteNodeBase {
     updatedAt: number;
 }
 
-/** A stored note node */
-export type NoteNode = NoteFolder | NoteConfig;
+/** Compatibility alias for callers that still use the older name. */
+export type NoteNode = NoteConfig;
 
 export const DEFAULT_NOTE_ICON = 'note';
 export const DEFAULT_NOTE_FOLDER_ICON = 'folder';
 export const LEGACY_DEFAULT_NOTE_ICON = 'notebook';
 
-export function getDefaultNoteIcon(kind: NoteNodeKind): string {
-    return kind === 'folder' ? DEFAULT_NOTE_FOLDER_ICON : DEFAULT_NOTE_ICON;
+export function getDefaultNoteIcon(): string {
+    return DEFAULT_NOTE_ICON;
 }
 
 /** Data types available for user tokens */
@@ -208,18 +198,18 @@ export function createDefaultButton(locality: ButtonLocality = 'Global'): Button
 }
 
 /** Creates a new empty note with defaults */
-export function createDefaultNote(locality: ButtonLocality = 'Global', parentId: string | null = null): NoteConfig {
+export function createDefaultNote(locality: ButtonLocality = 'Global'): NoteConfig {
     return {
         id: generateId(),
         name: '',
         locality,
-        parentId,
-        kind: 'note',
+        category: 'General',
         icon: DEFAULT_NOTE_ICON,
         colour: '',
         sortOrder: undefined,
         content: '',
         format: 'PlainText',
+        defaultAction: 'open',
         promptEnabled: false,
         copilotModel: '',
         copilotMode: 'agent',
@@ -227,20 +217,6 @@ export function createDefaultNote(locality: ButtonLocality = 'Global', parentId:
         copilotAttachActiveFile: false,
         userTokens: [],
         updatedAt: Date.now()
-    };
-}
-
-/** Creates a new empty note folder with defaults */
-export function createDefaultNoteFolder(locality: ButtonLocality = 'Global', parentId: string | null = null): NoteFolder {
-    return {
-        id: generateId(),
-        name: '',
-        locality,
-        parentId,
-        kind: 'folder',
-        icon: DEFAULT_NOTE_FOLDER_ICON,
-        colour: '',
-        sortOrder: undefined
     };
 }
 
@@ -367,6 +343,7 @@ export const AVAILABLE_ICONS: { name: string; label: string }[] = [
 
 /** Copilot modes */
 export const COPILOT_MODES = ['agent', 'ask', 'edit', 'plan'];
+export const NOTE_DEFAULT_ACTIONS: NoteDefaultAction[] = ['open', 'insert', 'copilot', 'copy'];
 
 /** Button type display names and descriptions */
 export const BUTTON_TYPE_INFO: Record<ButtonType, { label: string; description: string; icon: string }> = {

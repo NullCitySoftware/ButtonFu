@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
-import { createDefaultNote, createDefaultNoteFolder } from '../types';
+import { createDefaultNote } from '../types';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
 
 function createStore() {
@@ -13,7 +13,7 @@ function createStore() {
     return { harness, store };
 }
 
-test('moveNode can move a note across scopes', async () => {
+test('saving a note can move it across scopes', async () => {
     const { store } = createStore();
 
     const note = createDefaultNote('Global');
@@ -21,49 +21,16 @@ test('moveNode can move a note across scopes', async () => {
     note.content = 'hello';
     const saved = await store.saveNode(note);
 
-    const moved = await store.moveNode(saved.id, 'Local', null);
-    assert.equal(moved, true);
+    const moved = await store.saveNode({
+        ...saved,
+        locality: 'Local'
+    });
+
+    assert.equal(moved.locality, 'Local');
     assert.equal(store.getNote(saved.id)?.locality, 'Local');
 });
 
-test('moving a folder across scopes updates its descendants', async () => {
-    const { store } = createStore();
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.name = 'Prompt Library';
-    const savedFolder = await store.saveNode(folder);
-
-    const childNote = createDefaultNote('Global', savedFolder.id);
-    childNote.name = 'Nested note';
-    childNote.content = 'nested';
-    const savedNote = await store.saveNode(childNote);
-
-    const moved = await store.moveNode(savedFolder.id, 'Local', null);
-    assert.equal(moved, true);
-    assert.equal(store.getFolder(savedFolder.id)?.locality, 'Local');
-    assert.equal(store.getNote(savedNote.id)?.locality, 'Local');
-    assert.equal(store.getNote(savedNote.id)?.parentId, savedFolder.id);
-});
-
-test('deleteNode removes a folder subtree', async () => {
-    const { store } = createStore();
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.name = 'Delete me';
-    const savedFolder = await store.saveNode(folder);
-
-    const childNote = createDefaultNote('Global', savedFolder.id);
-    childNote.name = 'Child';
-    childNote.content = 'child';
-    const savedNote = await store.saveNode(childNote);
-
-    await store.deleteNode(savedFolder.id);
-
-    assert.equal(store.getFolder(savedFolder.id), undefined);
-    assert.equal(store.getNote(savedNote.id), undefined);
-});
-
-test('reorderNode swaps sibling order within a parent', async () => {
+test('reorderNode swaps locality order', async () => {
     const { store } = createStore();
 
     const first = createDefaultNote('Global');
@@ -80,7 +47,7 @@ test('reorderNode swaps sibling order within a parent', async () => {
 
     await store.reorderNode(savedSecond.id, 'up');
 
-    const ordered = store.getChildren('Global', null);
+    const ordered = store.getGlobalNodes();
     assert.equal(ordered[0]?.id, savedSecond.id);
     assert.equal(ordered[1]?.id, savedFirst.id);
 });
@@ -103,45 +70,6 @@ test('saving a workspace note does not rewrite global note settings', async () =
     assert.deepEqual(harness.configurationUpdates, []);
 });
 
-test('moveNode rejects moving a folder into its own descendant', async () => {
-    const { store } = createStore();
-
-    const parentFolder = createDefaultNoteFolder('Global');
-    parentFolder.name = 'Parent';
-    const savedParent = await store.saveNode(parentFolder);
-
-    const childFolder = createDefaultNoteFolder('Global', savedParent.id);
-    childFolder.name = 'Child';
-    const savedChild = await store.saveNode(childFolder);
-
-    const moved = await store.moveNode(savedParent.id, 'Global', savedChild.id);
-
-    assert.equal(moved, false);
-    assert.equal(store.getFolder(savedParent.id)?.parentId, null);
-    assert.equal(store.getFolder(savedChild.id)?.parentId, savedParent.id);
-});
-
-test('saving an edited note clears a parent that becomes invalid after a scope change', async () => {
-    const { store } = createStore();
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.name = 'Global Folder';
-    const savedFolder = await store.saveNode(folder);
-
-    const note = createDefaultNote('Global', savedFolder.id);
-    note.name = 'Scoped note';
-    note.content = 'content';
-    const savedNote = await store.saveNode(note);
-
-    const updated = await store.saveNode({
-        ...savedNote,
-        locality: 'Local'
-    });
-
-    assert.equal(updated.locality, 'Local');
-    assert.equal(updated.parentId, null);
-});
-
 test('saving a note preserves updatedAt for metadata-only edits and refreshes it for content changes', async () => {
     const { store } = createStore();
     const originalNow = Date.now;
@@ -156,7 +84,7 @@ test('saving a note preserves updatedAt for metadata-only edits and refreshes it
         Date.now = () => 2000;
         const metadataOnly = await store.saveNode({
             ...saved,
-            colour: 'charts.yellow'
+            category: 'Prompts'
         });
 
         assert.equal(metadataOnly.updatedAt, 1000);
@@ -202,7 +130,7 @@ test('saving a note requires a non-empty trimmed name', async () => {
     assert.equal(store.getAllNodes().length, 0);
 });
 
-test('loading persisted nodes normalizes opposite built-in note and folder icons', async () => {
+test('legacy folders and nested notes are dropped while surviving notes are normalized', async () => {
     const { harness, store } = createStore();
 
     await harness.vscode.workspace.getConfiguration('buttonfu').update('globalNotes', [
@@ -214,6 +142,23 @@ test('loading persisted nodes normalizes opposite built-in note and folder icons
             kind: 'folder',
             icon: 'notebook',
             colour: ''
+        },
+        {
+            id: 'nested-note',
+            name: 'Nested note',
+            locality: 'Global',
+            parentId: 'legacy-folder',
+            kind: 'note',
+            icon: 'note',
+            colour: '',
+            content: 'hidden',
+            format: 'PlainText',
+            copilotModel: '',
+            copilotMode: 'agent',
+            copilotAttachFiles: [],
+            copilotAttachActiveFile: false,
+            userTokens: [],
+            updatedAt: 1
         },
         {
             id: 'legacy-note',
@@ -234,6 +179,22 @@ test('loading persisted nodes normalizes opposite built-in note and folder icons
         }
     ]);
 
-    assert.equal(store.getFolder('legacy-folder')?.icon, 'folder');
-    assert.equal(store.getNote('legacy-note')?.icon, 'note');
+    const notes = store.getGlobalNodes();
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0].id, 'legacy-note');
+    assert.equal(notes[0].icon, 'note');
+    assert.equal(notes[0].category, 'General');
+    assert.equal(notes[0].defaultAction, 'open');
+});
+
+test('blank categories are normalized to General on save', async () => {
+    const { store } = createStore();
+
+    const note = createDefaultNote('Global');
+    note.name = 'Categorized';
+    note.content = 'body';
+    note.category = '   ';
+    const saved = await store.saveNode(note);
+
+    assert.equal(saved.category, 'General');
 });

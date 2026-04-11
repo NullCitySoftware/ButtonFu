@@ -7,7 +7,8 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/buttonfu-extension"
+        "--extensionDevelopmentPath=${workspaceFolder}/buttonfu-extension",
+        "${workspaceFolder}"
       ],
       "outFiles": [
         "${workspaceFolder}/buttonfu-extension/out/**/*.js"
@@ -20,7 +21,8 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/buttonfu-extension"
+        "--extensionDevelopmentPath=${workspaceFolder}/buttonfu-extension",
+        "${workspaceFolder}"
       ],
       "outFiles": [
         "${workspaceFolder}/buttonfu-extension/out/**/*.js"
@@ -37,7 +39,6 @@
         "--user-data-dir=${workspaceFolder}/.drive-net/vscode-user-data",
         "--extensions-dir=${workspaceFolder}/.drive-net/vscode-extensions",
         "--new-window",
-        "--add",
         "${workspaceFolder}",
         "--disable-updates",
         "--skip-release-notes"

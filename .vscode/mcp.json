@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "Drive.NET": {
+      "type": "stdio",
+      "command": "${env:LOCALAPPDATA}\\DriveNet\\DriveNet.Server.exe"
+    }
+  }
+}

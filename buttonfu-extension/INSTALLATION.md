@@ -33,8 +33,8 @@ Open the repository root in VS Code, then press `F5` to run the checked-in `Run 
 3. Click the **gear** (⚙) icon to open the Button Editor
 4. Create your first button:
    - Give it a name
-   - Choose a type (Terminal Command, PowerShell, etc.)
-   - Enter the command to execute
+   - Choose a type (Terminal Command, Command Palette Action, Task Execution, or Copilot Command)
+   - Enter the command, task, or prompt to execute
    - Pick an icon and colour
    - Save
 
@@ -42,8 +42,7 @@ Open the repository root in VS Code, then press `F5` to run the checked-in `Run 
 
 | Type | Description | Example |
 |------|-------------|---------|
-| Terminal Command | Runs in the default terminal | `npm run build` |
-| PowerShell Command | Runs in a PowerShell terminal | `Get-Process \| Sort-Object CPU` |
+| Terminal Command | Runs shell commands in the integrated terminal, including PowerShell when that is your configured shell | `npm run build` |
 | Command Palette Action | Executes a VS Code command | `workbench.action.toggleSidebarVisibility` |
 | Task Execution | Runs a task from tasks.json | `build` |
 | Copilot Command | Sends a prompt to Copilot Chat | `Explain this code` |

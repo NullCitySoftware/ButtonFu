@@ -43,19 +43,20 @@ Both scopes show up together in the sidebar panel, clearly labelled, so you alwa
 
 ## Notes & prompts
 
-ButtonFu now includes a native **Notes** tree view alongside the button panel. Notes use the same **Global** and **Workspace** scope model as buttons, so you can keep reusable prompts in one place and project-specific notes in another.
+ButtonFu notes now live directly inside the main sidebar flow as **split buttons**. They use the same **Global** and **Workspace** scopes and the same **category** grouping model as regular buttons, so reusable prompts and project-specific notes sit beside the actions they belong with.
 
 Notes support:
 
-- **Arbitrary nested folders** for organising note libraries and prompt collections
 - **Plain Text** and **Markdown** note formats
-- A primary **action menu** with Preview/Open, Insert into Active Editor, Send to Copilot Chat, Copy, Edit, Move, and Delete
-- **Prompt-enabled notes** that resolve the same token system used by buttons, plus note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteFolderPath$`
-- **Drag-and-drop** between folders and scope roots, plus explicit move commands for precise ordering and cross-scope moves
+- A configurable **default action** for the main click: Preview/Open, Insert into Active Editor, Send to Copilot Chat, or Copy to Clipboard
+- A split-button dropdown with Preview/Open, Insert into Active Editor, Send to Copilot Chat, Copy to Clipboard, and Edit
+- **Flat notes** with no tree nodes or note folders to manage
+- **Prompt-enabled notes** that resolve the same token system used by buttons, plus note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteCategory$`
+- The same **icon picker** and optional **colour** styling used by regular buttons
 
-Markdown notes can be previewed directly, and prompt-enabled notes can be copied, inserted, or sent to Copilot after token resolution. When you add a note or folder from the Notes view without selecting a scope first, ButtonFu prompts for Global versus Workspace placement.
+Markdown notes can be previewed directly, and prompt-enabled notes can be copied, inserted, or sent to Copilot after token resolution. When you add a note without specifying a scope first, ButtonFu prompts for Global versus Workspace placement, focuses the Name field immediately, and keeps Insert into Active Editor usable even when no editor is already open by creating a new untitled document for the note content.
 
-If you want a cleaner sidebar, the ButtonFu Options page includes a `Show Notes` toggle. Disabling it hides the Notes view and related Notes commands without deleting any saved notes.
+If you want a cleaner sidebar, the ButtonFu Options page includes a `Show Notes` toggle. Disabling it hides the note split buttons and related Notes commands without deleting any saved notes.
 
 ---
 
@@ -131,5 +132,5 @@ Group related buttons under a **category** label. Categories appear as section h
 
 The extension package lives in `buttonfu-extension`.
 
-- `npm test` runs the full local verification path: compile, lint, a test-only TypeScript emit, and Node-based integration tests for activation, Notes storage, preview, actions, token flows, and tree drag/drop behaviour
+- `npm test` runs the full local verification path: compile, lint, a test-only TypeScript emit, and Node-based integration tests for activation, flat-note storage, sidebar split-button actions, preview flows, and token resolution
 - `npm run vsce-package` builds a VSIX from the extension package

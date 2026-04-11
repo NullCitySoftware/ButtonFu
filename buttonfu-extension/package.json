@@ -49,12 +49,6 @@
           "type": "webview",
           "id": "buttonfu.buttonsView",
           "name": "Buttons"
-        },
-        {
-          "type": "tree",
-          "id": "buttonfu.notesView",
-          "name": "Notes",
-          "when": "false"
         }
       ]
     },
@@ -102,11 +96,6 @@
         "icon": "$(add)"
       },
       {
-        "command": "buttonfu.addNoteFolder",
-        "title": "ButtonFu: Add Note Folder",
-        "icon": "$(new-folder)"
-      },
-      {
         "command": "buttonfu.openNoteActions",
         "title": "ButtonFu: Open Note Actions"
       },
@@ -132,33 +121,18 @@
       },
       {
         "command": "buttonfu.editNoteNode",
-        "title": "Edit Note or Folder",
+        "title": "Edit Note",
         "icon": "$(edit)"
       },
       {
         "command": "buttonfu.deleteNoteNode",
-        "title": "Delete Note or Folder",
+        "title": "Delete Note",
         "icon": "$(trash)"
       },
       {
         "command": "buttonfu.refreshNotes",
         "title": "Refresh Notes",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "buttonfu.moveNoteUp",
-        "title": "Move Note Up",
-        "icon": "$(arrow-up)"
-      },
-      {
-        "command": "buttonfu.moveNoteDown",
-        "title": "Move Note Down",
-        "icon": "$(arrow-down)"
-      },
-      {
-        "command": "buttonfu.moveNoteToFolder",
-        "title": "Move Note To Folder",
-        "icon": "$(folder-opened)"
       }
     ],
     "menus": {
@@ -172,51 +146,7 @@
           "when": "config.buttonfu.showNotes"
         },
         {
-          "command": "buttonfu.addNoteFolder",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.openNoteActions",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.previewNote",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.copyNote",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.insertNote",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.sendNoteToCopilot",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.editNoteNode",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.deleteNoteNode",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
           "command": "buttonfu.refreshNotes",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.moveNoteUp",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.moveNoteDown",
-          "when": "config.buttonfu.showNotes"
-        },
-        {
-          "command": "buttonfu.moveNoteToFolder",
           "when": "config.buttonfu.showNotes"
         }
       ],
@@ -230,103 +160,9 @@
           "command": "buttonfu.refreshButtons",
           "when": "view == buttonfu.buttonsView",
           "group": "navigation@2"
-        },
-        {
-          "command": "buttonfu.openNoteEditor",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
-          "group": "navigation@1"
-        },
-        {
-          "command": "buttonfu.addNote",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
-          "group": "navigation@2"
-        },
-        {
-          "command": "buttonfu.addNoteFolder",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
-          "group": "navigation@3"
-        },
-        {
-          "command": "buttonfu.refreshNotes",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes",
-          "group": "navigation@4"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "buttonfu.addNote",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteScopeRoot || viewItem == noteFolder)",
-          "group": "inline@1"
-        },
-        {
-          "command": "buttonfu.addNoteFolder",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteScopeRoot || viewItem == noteFolder)",
-          "group": "inline@2"
-        },
-        {
-          "command": "buttonfu.previewNote",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
-          "group": "inline@1"
-        },
-        {
-          "command": "buttonfu.editNoteNode",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
-          "group": "inline@2"
-        },
-        {
-          "command": "buttonfu.previewNote",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
-          "group": "actions@1"
-        },
-        {
-          "command": "buttonfu.insertNote",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
-          "group": "actions@2"
-        },
-        {
-          "command": "buttonfu.sendNoteToCopilot",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
-          "group": "actions@3"
-        },
-        {
-          "command": "buttonfu.copyNote",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && viewItem == noteItem",
-          "group": "actions@4"
-        },
-        {
-          "command": "buttonfu.editNoteNode",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
-          "group": "edit@1"
-        },
-        {
-          "command": "buttonfu.moveNoteToFolder",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
-          "group": "move@1"
-        },
-        {
-          "command": "buttonfu.moveNoteUp",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
-          "group": "move@2"
-        },
-        {
-          "command": "buttonfu.moveNoteDown",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
-          "group": "move@3"
-        },
-        {
-          "command": "buttonfu.deleteNoteNode",
-          "when": "view == buttonfu.notesView && config.buttonfu.showNotes && (viewItem == noteItem || viewItem == noteFolder)",
-          "group": "delete@1"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "buttonfu.notesView",
-        "contents": "No notes yet.\n[Add Note](command:buttonfu.addNote)\n[Add Folder](command:buttonfu.addNoteFolder)",
-        "when": "config.buttonfu.showNotes"
-      }
-    ],
     "configuration": {
       "title": "ButtonFu",
       "properties": {
@@ -339,13 +175,13 @@
         "buttonfu.globalNotes": {
           "type": "array",
           "default": [],
-          "description": "Global notes and folders available in all workspaces",
+          "description": "Global notes available in all workspaces",
           "scope": "machine"
         },
         "buttonfu.showNotes": {
           "type": "boolean",
           "default": true,
-          "description": "Show the Notes section and enable Notes commands.",
+          "description": "Show note split buttons in the main ButtonFu sidebar and enable Notes commands.",
           "scope": "application"
         }
       }
@@ -363,7 +199,7 @@
     "check-webview-js": "node --check resources/editor.js",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "build-tests": "tsc -p tsconfig.test.json",
+    "build-tests": "node -e \"require('fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc -p tsconfig.test.json",
     "test": "npm run build-tests && node --test .test-out/test/*.test.js",
     "vsce-package": "vsce package"
   },

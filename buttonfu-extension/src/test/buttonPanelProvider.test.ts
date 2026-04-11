@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
-import { createDefaultButton, createDefaultNote, createDefaultNoteFolder } from '../types';
+import { createDefaultButton, createDefaultNote } from '../types';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
 import { executeWebviewScripts } from './helpers/webviewRuntime';
 
-test('button panel keeps the legacy grouped layout with a workspace empty message', async () => {
+function createProviderContext() {
     const harness = createFakeVscodeHarness();
     const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
     const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
@@ -16,298 +16,152 @@ test('button panel keeps the legacy grouped layout with a workspace empty messag
     const context = harness.createExtensionContext();
     const store = new buttonStoreModule.ButtonStore(context);
     const noteStore = new noteStoreModule.NoteStore(context);
+    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
+    return { harness, context, store, noteStore, provider };
+}
+
+function renderHtml(provider: any) {
+    return provider._getHtmlContent({
+        cspSource: 'vscode-webview://test',
+        asWebviewUri: (uri: unknown) => uri
+    });
+}
+
+test('button panel mixes note split buttons into the grouped layout', async () => {
+    const { harness, noteStore, provider } = createProviderContext();
 
     const general = createDefaultButton('Global');
     general.name = 'Git Commit + Push';
     general.category = 'General';
     general.icon = 'play';
+    general.sortOrder = 0;
+
+    const note = createDefaultNote('Global');
+    note.id = 'review-note';
+    note.name = 'Review Checklist';
+    note.category = 'General';
+    note.sortOrder = 5;
+    note.content = 'Check output';
 
     const reviews = createDefaultButton('Global');
     reviews.name = '3 Lens Review';
     reviews.category = 'Reviews';
     reviews.icon = 'beaker';
-    reviews.sortOrder = (general.sortOrder ?? 0) + 10;
+    reviews.sortOrder = 10;
 
     await harness.vscode.workspace.getConfiguration('buttonfu').update('globalButtons', [general, reviews]);
+    await noteStore.saveNode(note);
 
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
+    const html = renderHtml(provider);
 
-    assert.match(html, /<div class="locality-header header-with-actions">[\s\S]*<span>Global<\/span>/);
+    assert.match(html, /<div class="locality-header">[\s\S]*<span>Global<\/span>/);
     assert.match(html, /<span>General<\/span>/);
     assert.match(html, /Git Commit \+ Push/);
+    assert.match(html, /id="note-split-review-note"/);
+    assert.match(html, /Review Checklist/);
     assert.match(html, /<span>Reviews<\/span>/);
     assert.match(html, /3 Lens Review/);
-    assert.match(html, /<div class="locality-header header-with-actions">[\s\S]*<span>Workspace \[TestWorkspace\]<\/span>/);
-    assert.match(html, /No workspace buttons\. Add one via the editor\./);
-    assert.doesNotMatch(html, /No global buttons\. Add one via the editor\./);
-    assert.match(html, /<span>Notes<\/span>/);
-    assert.match(html, /No global notes\. Add one via the editor\./);
-    assert.equal((html.match(/class="locality-header/g) || []).length, 2);
-    assert.match(html, /id="addNoteBtn"[\s\S]*id="openNoteEditorBtn"/);
+    assert.match(html, /<div class="locality-header">[\s\S]*<span>Workspace \[TestWorkspace\]<\/span>/);
+    assert.match(html, /No workspace buttons or notes\. Add one via the editor\./);
+    assert.doesNotMatch(html, />Notes</);
+    assert.doesNotMatch(html, /noteContextMenu/);
+    assert.match(html, /id="addNoteFooterBtn"/);
+    assert.match(html, /id="openNoteEditorBtn"/);
 });
 
-test('button panel still shows the workspace section when the workspace has no buttons at all', () => {
-    const harness = createFakeVscodeHarness();
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
-
-    assert.match(html, /<div class="locality-header header-with-actions">[\s\S]*<span>Workspace \[TestWorkspace\]<\/span>/);
-    assert.match(html, /No workspace buttons\. Add one via the editor\./);
-    assert.match(html, /Workspace Notes \[TestWorkspace\]/);
-});
-
-test('button panel still shows workspace sections when no folder is open', () => {
-    const harness = createFakeVscodeHarness();
+test('button panel still shows the workspace header when no folder is open', async () => {
+    const { harness, noteStore, provider } = createProviderContext();
     harness.setWorkspaceFolders([], { name: '', fireEvent: false });
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
-
-    assert.match(html, /<div class="locality-header header-with-actions">[\s\S]*<span>Workspace<\/span>/);
-    assert.match(html, /No workspace buttons\. Add one via the editor\./);
-    assert.match(html, /Workspace Notes/);
-});
-
-test('button panel lets folder rows create notes inline without making scope headers interactive', async () => {
-    const harness = createFakeVscodeHarness();
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.id = 'prompt-folder';
-    folder.name = 'Prompt Folder';
-    await noteStore.saveNode(folder);
-
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
-
-    assert.match(html, /id="noteContextMenu"/);
-    assert.match(html, /class="notes-scope-label"[^>]*>Global Notes<\/div>/);
-    assert.doesNotMatch(html, /data-note-target-kind="scopeRoot"/);
-    assert.doesNotMatch(html, /id="noteTargetBanner"/);
-    assert.match(html, /id="note-folder-row-prompt-folder"/);
-    assert.match(html, /id="note-folder-add-prompt-folder"/);
-
-    const runtime = executeWebviewScripts(html);
-
-    runtime.click('note-folder-add-prompt-folder');
-    assert.deepEqual(runtime.postedMessages.at(-1), {
-        type: 'addNote',
-        target: {
-            id: 'prompt-folder',
-            locality: 'Global',
-            kind: 'folder'
-        }
-    });
-
-    runtime.contextMenu('note-folder-row-prompt-folder', 32, 44);
-    assert.equal(runtime.document.getElementById('noteContextMenu')?.classList.contains('visible'), true);
-    assert.equal((runtime.document.getElementById('noteContextEdit') as any)?.hidden, false);
-    assert.equal((runtime.document.getElementById('noteContextDelete') as any)?.hidden, false);
-
-    runtime.click('noteContextAddFolder');
-    assert.deepEqual(runtime.postedMessages.at(-1), {
-        type: 'addNoteFolder',
-        target: {
-            id: 'prompt-folder',
-            locality: 'Global',
-            kind: 'folder'
-        }
-    });
-
-    runtime.click('addNoteBtn');
-    assert.deepEqual(runtime.postedMessages.at(-1), { type: 'addNote' });
-});
-
-test('folder with children renders a chevron that toggles collapse state', async () => {
-    const harness = createFakeVscodeHarness();
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.id = 'parent-folder';
-    folder.name = 'My Folder';
-    await noteStore.saveNode(folder);
-
-    const note = createDefaultNote('Global', 'parent-folder');
-    note.id = 'child-note';
-    note.name = 'Child Note';
-    await noteStore.saveNode(note);
-
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
-
-    // Folder with children shows a down-chevron (expanded) and the child note
-    assert.match(html, /id="note-chevron-parent-folder"/);
-    assert.match(html, /codicon-chevron-down/);
-    assert.match(html, /id="note-row-child-note"/);
-
-    // Clicking the chevron posts a toggleNoteFolder message
-    const runtime = executeWebviewScripts(html);
-    runtime.click('note-chevron-parent-folder');
-    assert.deepEqual(runtime.postedMessages.at(-1), {
-        type: 'toggleNoteFolder',
-        id: 'parent-folder'
-    });
-
-    // After collapsing (persisted in globalState), re-render hides children
-    await context.globalState.update('notes.collapsedFolders', ['parent-folder']);
-    const collapsedHtml = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
-    assert.match(collapsedHtml, /codicon-chevron-right/);
-    assert.doesNotMatch(collapsedHtml, /id="note-row-child-note"/);
-});
-
-test('empty folder renders no chevron', async () => {
-    const harness = createFakeVscodeHarness();
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.id = 'empty-folder';
-    folder.name = 'Empty';
-    await noteStore.saveNode(folder);
-
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
-
-    assert.match(html, /id="note-folder-row-empty-folder"/);
-    assert.doesNotMatch(html, /id="note-chevron-empty-folder"/);
-    assert.doesNotMatch(html, /codicon-chevron-down/);
-});
-
-test('note rows and folder rows have draggable attribute and drag data', async () => {
-    const harness = createFakeVscodeHarness();
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
-
-    const folder = createDefaultNoteFolder('Global');
-    folder.id = 'drag-folder';
-    folder.name = 'Drag Folder';
-    await noteStore.saveNode(folder);
 
     const note = createDefaultNote('Global');
-    note.id = 'drag-note';
-    note.name = 'Drag Note';
+    note.id = 'workspace-label-note';
+    note.name = 'Workspace Label';
+    note.content = 'body';
     await noteStore.saveNode(note);
 
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
-    });
+    const html = renderHtml(provider);
 
-    // Folder row is draggable with drag data
-    assert.match(html, /id="note-folder-row-drag-folder"[^>]*draggable="true"/);
-    assert.match(html, /id="note-folder-row-drag-folder"[^>]*data-note-drag-id="drag-folder"/);
-
-    // Note row is draggable with drag data
-    assert.match(html, /id="note-row-drag-note"[^>]*draggable="true"/);
-    assert.match(html, /id="note-row-drag-note"[^>]*data-note-drag-id="drag-note"/);
-
-    // Scope labels are drop targets
-    assert.match(html, /id="note-scope-global"[^>]*data-note-drop-scope="Global"/);
-
-    // Idle rows do not force hand/grab cursors; drag feedback uses the OS drag cursor instead.
-    assert.doesNotMatch(html, /\.note-row\s*\{[^}]*cursor:\s*pointer;/);
-    assert.doesNotMatch(html, /\[draggable="true"\]\s*\{[^}]*cursor:\s*grab;/);
+    assert.match(html, /<div class="locality-header">[\s\S]*<span>Workspace<\/span>/);
+    assert.match(html, /No workspace buttons or notes\. Add one via the editor\./);
 });
 
-test('double-clicking a note row posts editNoteNode message', async () => {
-    const harness = createFakeVscodeHarness();
-    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
-    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
-    const providerModulePath = path.resolve(__dirname, '..', 'buttonPanelProvider.js');
-    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
-    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
-    const providerModule = loadWithPatchedVscode<{ ButtonPanelProvider: new (extensionUri: any, store: any, noteStore: any, globalState: any) => any }>(providerModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
-    const store = new buttonStoreModule.ButtonStore(context);
-    const noteStore = new noteStoreModule.NoteStore(context);
+test('button panel hides note controls when showNotes is disabled', async () => {
+    const { harness, noteStore, provider } = createProviderContext();
 
     const note = createDefaultNote('Global');
-    note.id = 'dblclick-note';
-    note.name = 'Double Click Me';
+    note.id = 'hidden-note';
+    note.name = 'Hidden';
+    note.content = 'body';
     await noteStore.saveNode(note);
 
-    const provider = new providerModule.ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    const html = (provider as any)._getHtmlContent({
-        cspSource: 'vscode-webview://test',
-        asWebviewUri: (uri: unknown) => uri
+    await harness.vscode.workspace.getConfiguration('buttonfu').update('showNotes', false);
+    const html = renderHtml(provider);
+
+    assert.doesNotMatch(html, /note-split-hidden-note/);
+    assert.doesNotMatch(html, /id="addNoteFooterBtn"/);
+    assert.doesNotMatch(html, /id="openNoteEditorBtn"/);
+});
+
+test('note split buttons post execute and dropdown menu actions', async () => {
+    const { noteStore, provider } = createProviderContext();
+
+    const note = createDefaultNote('Global');
+    note.id = 'split-note';
+    note.name = 'Split Note';
+    note.content = '# Heading';
+    note.format = 'Markdown';
+    await noteStore.saveNode(note);
+
+    const html = renderHtml(provider);
+    const runtime = executeWebviewScripts(html);
+
+    runtime.click('note-run-split-note');
+    assert.deepEqual(runtime.postedMessages.at(-1), {
+        type: 'executeNote',
+        id: 'split-note'
     });
 
-    const runtime = executeWebviewScripts(html);
-    runtime.doubleClick('note-row-dblclick-note');
+    runtime.click('note-menu-split-note');
+    assert.equal(runtime.document.getElementById('noteActionMenu')?.classList.contains('visible'), true);
+    assert.equal(runtime.document.getElementById('noteMenuOpenLabel')?.textContent, 'Preview');
+
+    runtime.click('noteActionCopy');
+    assert.deepEqual(runtime.postedMessages.at(-1), {
+        type: 'copyNote',
+        id: 'split-note'
+    });
+
+    runtime.click('note-menu-split-note');
+    runtime.click('noteActionEdit');
     assert.deepEqual(runtime.postedMessages.at(-1), {
         type: 'editNoteNode',
-        id: 'dblclick-note'
+        id: 'split-note'
+    });
+});
+
+test('note add buttons post scope-aware create messages', async () => {
+    const { harness, provider } = createProviderContext();
+    const general = createDefaultButton('Global');
+    general.name = 'Seed';
+    general.category = 'General';
+    await harness.vscode.workspace.getConfiguration('buttonfu').update('globalButtons', [general]);
+
+    const html = renderHtml(provider);
+    const runtime = executeWebviewScripts(html);
+
+    runtime.click('addNoteGlobalBtn');
+    assert.deepEqual(runtime.postedMessages.at(-1), {
+        type: 'addNote',
+        locality: 'Global'
+    });
+
+    runtime.click('addNoteFooterBtn');
+    assert.deepEqual(runtime.postedMessages.at(-1), {
+        type: 'addNote'
+    });
+
+    runtime.click('openNoteEditorBtn');
+    assert.deepEqual(runtime.postedMessages.at(-1), {
+        type: 'openNoteEditor'
     });
 });
