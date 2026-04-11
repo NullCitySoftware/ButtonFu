@@ -173,3 +173,59 @@ test('button editor includes notes in refresh payloads and renders workspace not
         panel.dispose();
     }
 });
+
+test('button editor keeps button rows ahead of note rows when mixed items share the same sort order', async () => {
+    const harness = createFakeVscodeHarness();
+    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
+    const noteStoreModulePath = path.resolve(__dirname, '..', 'noteStore.js');
+    const editorPanelModulePath = path.resolve(__dirname, '..', 'editorPanel.js');
+    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
+    const noteStoreModule = loadWithPatchedVscode<{ NoteStore: new (context: any) => any }>(noteStoreModulePath, harness.vscode);
+    const editorPanelModule = loadWithPatchedVscode<{ ButtonEditorPanel: any }>(editorPanelModulePath, harness.vscode);
+    const context = harness.createExtensionContext();
+    const buttonStore = new buttonStoreModule.ButtonStore(context);
+    const noteStore = new noteStoreModule.NoteStore(context);
+
+    const button = createDefaultButton('Local');
+    button.id = 'collision-button';
+    button.name = 'Zulu Button';
+    button.sortOrder = 10;
+
+    const note = createDefaultNote('Local');
+    note.id = 'collision-note';
+    note.name = 'Alpha Note';
+    note.sortOrder = 10;
+    note.content = 'Same sort order as the button.';
+
+    await buttonStore.saveButton(button);
+    await noteStore.saveNode(note);
+
+    editorPanelModule.ButtonEditorPanel.configure(context.globalState, () => undefined);
+    editorPanelModule.ButtonEditorPanel.createOrShow(buttonStore, context.extensionUri, noteStore);
+
+    const panel = harness.webviewPanels[0];
+    assert.ok(panel, 'Expected a webview panel to be created.');
+
+    try {
+        await panel.sendMessage({ type: 'getButtons' });
+
+        const refreshMessage = panel.postedMessages.at(-1) as {
+            type: string;
+            buttons: Array<{ id: string }>;
+            notes: Array<{ id: string }>;
+        };
+
+        const runtime = executeWebviewScripts(panel.panel.webview.html);
+        runtime.dispatchMessage(refreshMessage);
+
+        const html = runtime.document.getElementById('localButtonList')?.innerHTML ?? '';
+        const buttonIndex = html.indexOf('data-button-id="collision-button"');
+        const noteIndex = html.indexOf('data-note-id="collision-note"');
+
+        assert.notEqual(buttonIndex, -1);
+        assert.notEqual(noteIndex, -1);
+        assert.ok(buttonIndex < noteIndex, 'Expected the button card to render before the note card when sortOrder collides.');
+    } finally {
+        panel.dispose();
+    }
+});

@@ -2,15 +2,7 @@
 
 All notable changes to ButtonFu are documented here.
 
-## [1.1.2] - 2026-04-11
-
-### Changed
-- The Button Editor's Global and Workspace tabs now act as shared item lists when notes are enabled, so saved notes appear alongside buttons in the same scoped management view
-
-### Fixed
-- Workspace notes created through the Note Editor now appear as rows inside the Button Editor's Workspace tab instead of only in the sidebar split-button flow
-- The checked-in Drive.NET note smoke suite now asserts that the workspace note row appears in the Button Editor, closing the live regression gap for this path
-
+## [Unreleased]
 
 ## [1.1.1] - 2026-04-11
 
@@ -18,15 +10,18 @@ All notable changes to ButtonFu are documented here.
 - **Notes in the main sidebar** — ButtonFu now supports Global and Workspace notes directly in the main sidebar, grouped alongside buttons and supporting plain-text or Markdown content, preview/open, copy, insert, send-to-Copilot, and edit actions
 - **Prompt-enabled notes** — notes can use ButtonFu token resolution for copy, insert, and Copilot actions, including note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteCategory$`
 - **Show Notes option** — the Options page now includes a `Show Notes` toggle that hides or reveals notes while preserving stored note data
+- Hidden button and note CRUD commands for agent-driven automation, including batch operations and structured results
 
 ### Changed
 - **Split-button note actions** — each note now supports a configurable default click action, while Preview/Open, Insert, Send to Copilot, Copy, and Edit remain available from the dropdown menu
 - **Simplified note organisation** — notes are organised in flat category groups inside the main sidebar instead of a separate tree with folders
+- Button and note persistence now track `createdBy` and `lastModifiedBy` alongside the legacy `source` summary used for compatibility
 
 ### Fixed
 - Insert into Active Editor now opens a new untitled document populated with the note content when no editor is active
 - Copilot prompt submission now restores the clipboard after successful sends and resolves attached files correctly in multi-root workspaces
 - JSONC comment stripping in keybindings parsing now respects quoted strings
+- Button API writes now ignore unexpected input fields instead of persisting them into user settings or workspace state
 
 ## [1.1.0] - 2026-04-02
 

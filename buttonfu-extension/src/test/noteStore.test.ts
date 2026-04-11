@@ -133,7 +133,7 @@ test('saving a note requires a non-empty trimmed name', async () => {
     assert.equal(store.getAllNodes().length, 0);
 });
 
-test('legacy folders and nested notes are dropped while surviving notes are normalized', async () => {
+test('legacy folders are flattened into categories while migrated notes are normalized', async () => {
     const { harness, store } = createStore();
 
     await harness.vscode.workspace.getConfiguration('buttonfu').update('globalNotes', [
@@ -183,14 +183,25 @@ test('legacy folders and nested notes are dropped while surviving notes are norm
     ]);
 
     const notes = store.getGlobalNodes();
-    assert.equal(notes.length, 1);
-    assert.equal(notes[0].id, 'legacy-note');
-    assert.equal(notes[0].icon, 'note');
-    assert.equal(notes[0].category, 'General');
-    assert.equal(notes[0].defaultAction, 'open');
-    assert.equal(notes[0].createdBy, 'User');
-    assert.equal(notes[0].lastModifiedBy, 'User');
-    assert.equal(notes[0].source, 'User');
+    assert.equal(notes.length, 2);
+
+    const nestedNote = notes.find((entry: { id: string }) => entry.id === 'nested-note');
+    assert.ok(nestedNote);
+    assert.equal(nestedNote.category, 'Legacy folder');
+    assert.equal(nestedNote.icon, 'note');
+    assert.equal(nestedNote.defaultAction, 'open');
+    assert.equal(nestedNote.createdBy, 'User');
+    assert.equal(nestedNote.lastModifiedBy, 'User');
+    assert.equal(nestedNote.source, 'User');
+
+    const legacyNote = notes.find((entry: { id: string }) => entry.id === 'legacy-note');
+    assert.ok(legacyNote);
+    assert.equal(legacyNote.icon, 'note');
+    assert.equal(legacyNote.category, 'General');
+    assert.equal(legacyNote.defaultAction, 'open');
+    assert.equal(legacyNote.createdBy, 'User');
+    assert.equal(legacyNote.lastModifiedBy, 'User');
+    assert.equal(legacyNote.source, 'User');
 });
 
 test('blank categories are normalized to General on save', async () => {

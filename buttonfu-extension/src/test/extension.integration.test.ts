@@ -9,6 +9,7 @@ import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVs
 
 const DEV_RESET_API_SMOKE_COMMAND = 'buttonfu.dev.resetApiSmokeData';
 const DEV_CLEAR_API_SMOKE_COMMAND = 'buttonfu.dev.clearApiSmokeData';
+const DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND = 'buttonfu.dev.clearDriveNetSmokeData';
 
 test('activate registers the flat note commands and providers', async () => {
     const harness = createFakeVscodeHarness();
@@ -47,7 +48,8 @@ test('activate registers the flat note commands and providers', async () => {
         'buttonfu.api.updateNote',
         'buttonfu.api.deleteNote',
         DEV_RESET_API_SMOKE_COMMAND,
-        DEV_CLEAR_API_SMOKE_COMMAND
+        DEV_CLEAR_API_SMOKE_COMMAND,
+        DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND
     ];
 
     for (const command of expectedCommands) {
@@ -71,6 +73,7 @@ test('production activation does not register development-only smoke commands', 
 
     assert.equal(harness.registeredCommands.has(DEV_RESET_API_SMOKE_COMMAND), false);
     assert.equal(harness.registeredCommands.has(DEV_CLEAR_API_SMOKE_COMMAND), false);
+    assert.equal(harness.registeredCommands.has(DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND), false);
 });
 
 test('button api commands create list update get and delete through the registered command surface', async () => {
@@ -410,8 +413,10 @@ test('package manifest exposes development smoke commands only behind the dev-mo
 
     assert.ok(commands.some((item: { command: string }) => item.command === DEV_RESET_API_SMOKE_COMMAND));
     assert.ok(commands.some((item: { command: string }) => item.command === DEV_CLEAR_API_SMOKE_COMMAND));
+    assert.ok(commands.some((item: { command: string }) => item.command === DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND));
     assert.ok(commandPalette.some((item: { command: string; when: string }) => item.command === DEV_RESET_API_SMOKE_COMMAND && item.when === 'buttonfu.isDevelopmentMode'));
     assert.ok(commandPalette.some((item: { command: string; when: string }) => item.command === DEV_CLEAR_API_SMOKE_COMMAND && item.when === 'buttonfu.isDevelopmentMode'));
+    assert.ok(commandPalette.some((item: { command: string; when: string }) => item.command === DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND && item.when === 'buttonfu.isDevelopmentMode'));
 });
 
 test('package manifest keeps the legacy Buttons view toolbar actions', () => {

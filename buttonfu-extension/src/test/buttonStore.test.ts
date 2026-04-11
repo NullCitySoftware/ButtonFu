@@ -138,3 +138,57 @@ test('saveButton upgrades source to AgentAndUser when agent-created buttons are 
     assert.equal(store.getButton('agent-button')?.lastModifiedBy, 'User');
     assert.equal(store.getButton('agent-button')?.source, 'AgentAndUser');
 });
+
+test('saveButton fires one change event per logical save, including cross-scope moves', async () => {
+    const { store } = createStore();
+    let changeCount = 0;
+    const subscription = store.onDidChange(() => {
+        changeCount += 1;
+    });
+
+    try {
+        await store.saveButton({
+            id: 'eventful-button',
+            name: 'Eventful Button',
+            locality: 'Global',
+            description: '',
+            type: 'TerminalCommand',
+            executionText: 'echo global',
+            category: 'General',
+            icon: 'pulse',
+            colour: '',
+            copilotModel: '',
+            copilotMode: 'agent',
+            copilotAttachFiles: [],
+            copilotAttachActiveFile: false,
+            warnBeforeExecution: false,
+            userTokens: []
+        });
+
+        assert.equal(changeCount, 1);
+
+        changeCount = 0;
+
+        await store.saveButton({
+            id: 'eventful-button',
+            name: 'Eventful Button',
+            locality: 'Local',
+            description: '',
+            type: 'TerminalCommand',
+            executionText: 'echo local',
+            category: 'General',
+            icon: 'pulse',
+            colour: '',
+            copilotModel: '',
+            copilotMode: 'agent',
+            copilotAttachFiles: [],
+            copilotAttachActiveFile: false,
+            warnBeforeExecution: false,
+            userTokens: []
+        });
+
+        assert.equal(changeCount, 1);
+    } finally {
+        subscription.dispose();
+    }
+});

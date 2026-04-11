@@ -12,6 +12,33 @@ app:
 tests:
   - name: dismiss blockers and close the extension development host
     steps:
+      - tool: interact
+        action: sendKeys
+        comment: Open the Command Palette so the dev cleanup command can remove Drive.NET smoke artifacts.
+        args:
+          keys: "Ctrl+Shift+P"
+        expect:
+          success: true
+        delay_after_ms: 500
+
+      - tool: interact
+        action: type
+        comment: Run the development-only cleanup command for Drive.NET UI smoke data.
+        args:
+          value: "ButtonFu: Dev Clear Drive.NET Smoke Data"
+        expect:
+          success: true
+        delay_after_ms: 250
+
+      - tool: interact
+        action: sendKeys
+        comment: Execute the cleanup command before closing the host window.
+        args:
+          keys: "Enter"
+        expect:
+          success: true
+        delay_after_ms: 1600
+
       # ── Dismiss any leftover overlay ──────────────────────────────
       - tool: interact
         action: sendKeys

@@ -1822,6 +1822,15 @@ ${sharedControlScript}
                 return order;
             }
 
+            const kindPriority = {
+                button: 0,
+                note: 1
+            };
+            const kindOrder = (kindPriority[left.kind] ?? 99999) - (kindPriority[right.kind] ?? 99999);
+            if (kindOrder !== 0) {
+                return kindOrder;
+            }
+
             return (left.name || '').localeCompare(right.name || '');
         }
 

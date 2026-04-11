@@ -20,11 +20,12 @@ import {
 export class ButtonStore {
     private _onDidChange = new vscode.EventEmitter<void>();
     public readonly onDidChange = this._onDidChange.event;
+    private suppressGlobalConfigRefresh = false;
 
     constructor(private readonly context: vscode.ExtensionContext) {
         // Watch for external changes to global settings
         vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('buttonfu.globalButtons')) {
+            if (!this.suppressGlobalConfigRefresh && e.affectsConfiguration('buttonfu.globalButtons')) {
                 this._onDidChange.fire();
             }
         });
@@ -60,13 +61,28 @@ export class ButtonStore {
                 })
             };
         }
-        result = {
-            ...result,
+        return {
+            id: result.id,
+            name: result.name,
+            locality: result.locality,
+            description: result.description,
+            type: result.type,
+            executionText: result.executionText,
+            terminals: result.terminals?.map((terminal) => ({ ...terminal })),
+            category: result.category,
+            icon: result.icon,
+            colour: result.colour,
+            copilotModel: result.copilotModel,
+            copilotMode: result.copilotMode,
+            copilotAttachFiles: Array.isArray(result.copilotAttachFiles) ? [...result.copilotAttachFiles] : [],
+            copilotAttachActiveFile: result.copilotAttachActiveFile,
+            sortOrder: result.sortOrder,
+            warnBeforeExecution: result.warnBeforeExecution,
+            userTokens: result.userTokens?.map((token) => ({ ...token })),
             createdBy: normalizeButtonFuItemActor(result.createdBy) ?? getButtonFuItemActorFromSource(result.source),
             lastModifiedBy: normalizeButtonFuItemActor(result.lastModifiedBy) ?? getButtonFuItemActorFromSource(result.source),
             source: deriveButtonFuItemSource(result.createdBy, result.lastModifiedBy, result.source)
         };
-        return result;
     }
 
     /** Get all global buttons from VS Code settings */
@@ -109,12 +125,12 @@ export class ButtonStore {
             persistedButton.sortOrder = maxOrder + 10;
         }
 
-        await this.removeButtonFromOppositeLocality(persistedButton);
+        await this.removeButtonFromOppositeLocality(persistedButton, false);
 
         if (persistedButton.locality === 'Global') {
-            await this.saveGlobalButton(persistedButton);
+            await this.saveGlobalButton(persistedButton, false);
         } else {
-            await this.saveLocalButton(persistedButton);
+            await this.saveLocalButton(persistedButton, false);
         }
         this._onDidChange.fire();
     }
@@ -126,7 +142,7 @@ export class ButtonStore {
         const globalIdx = globals.findIndex(b => b.id === id);
         if (globalIdx >= 0) {
             globals.splice(globalIdx, 1);
-            await this.saveGlobalButtons(globals);
+            await this.saveGlobalButtons(globals, false);
             this._onDidChange.fire();
             return;
         }
@@ -136,7 +152,7 @@ export class ButtonStore {
         const localIdx = locals.findIndex(b => b.id === id);
         if (localIdx >= 0) {
             locals.splice(localIdx, 1);
-            await this.saveLocalButtons(locals);
+            await this.saveLocalButtons(locals, false);
             this._onDidChange.fire();
             return;
         }
@@ -158,7 +174,8 @@ export class ButtonStore {
             const tmp = globals[globalIdx].sortOrder!;
             globals[globalIdx].sortOrder = globals[swapIdx].sortOrder!;
             globals[swapIdx].sortOrder = tmp;
-            await this.saveGlobalButtons(globals);
+            await this.saveGlobalButtons(globals, false);
+            this._onDidChange.fire();
             return true;
         }
         const locals = this.getLocalButtons(); // already sorted
@@ -170,7 +187,8 @@ export class ButtonStore {
             const tmp = locals[localIdx].sortOrder!;
             locals[localIdx].sortOrder = locals[swapIdx].sortOrder!;
             locals[swapIdx].sortOrder = tmp;
-            await this.saveLocalButtons(locals);
+            await this.saveLocalButtons(locals, false);
+            this._onDidChange.fire();
             return true;
         }
         console.warn(`ButtonFu: reorderButton — button "${id}" not found in global or local lists`);
@@ -178,31 +196,40 @@ export class ButtonStore {
     }
 
     /** Replace all global buttons */
-    async saveGlobalButtons(buttons: ButtonConfig[]): Promise<void> {
+    async saveGlobalButtons(buttons: ButtonConfig[], emitChange = true): Promise<void> {
         const config = vscode.workspace.getConfiguration('buttonfu');
-        await config.update(
-            'globalButtons',
-            buttons.map((button) => this.migrateButton({ ...button, locality: 'Global' as ButtonLocality })),
-            vscode.ConfigurationTarget.Global
-        );
-        this._onDidChange.fire();
+        this.suppressGlobalConfigRefresh = true;
+        try {
+            await config.update(
+                'globalButtons',
+                buttons.map((button) => this.migrateButton({ ...button, locality: 'Global' as ButtonLocality })),
+                vscode.ConfigurationTarget.Global
+            );
+        } finally {
+            this.suppressGlobalConfigRefresh = false;
+        }
+        if (emitChange) {
+            this._onDidChange.fire();
+        }
     }
 
     /** Replace all local buttons */
-    async saveLocalButtons(buttons: ButtonConfig[]): Promise<void> {
+    async saveLocalButtons(buttons: ButtonConfig[], emitChange = true): Promise<void> {
         await this.context.workspaceState.update(
             'buttonfu.localButtons',
             buttons.map((button) => this.migrateButton({ ...button, locality: 'Local' as ButtonLocality }))
         );
-        this._onDidChange.fire();
+        if (emitChange) {
+            this._onDidChange.fire();
+        }
     }
 
-    private async removeButtonFromOppositeLocality(button: ButtonConfig): Promise<void> {
+    private async removeButtonFromOppositeLocality(button: ButtonConfig, emitChange = true): Promise<void> {
         if (button.locality === 'Global') {
             const locals = this.getLocalButtons();
             const nextLocals = locals.filter((entry) => entry.id !== button.id);
             if (nextLocals.length !== locals.length) {
-                await this.saveLocalButtons(nextLocals);
+                await this.saveLocalButtons(nextLocals, emitChange);
             }
             return;
         }
@@ -210,11 +237,11 @@ export class ButtonStore {
         const globals = this.getGlobalButtons();
         const nextGlobals = globals.filter((entry) => entry.id !== button.id);
         if (nextGlobals.length !== globals.length) {
-            await this.saveGlobalButtons(nextGlobals);
+            await this.saveGlobalButtons(nextGlobals, emitChange);
         }
     }
 
-    private async saveGlobalButton(button: ButtonConfig): Promise<void> {
+    private async saveGlobalButton(button: ButtonConfig, emitChange = true): Promise<void> {
         const buttons = this.getGlobalButtons();
         const idx = buttons.findIndex(b => b.id === button.id);
         if (idx >= 0) {
@@ -222,10 +249,10 @@ export class ButtonStore {
         } else {
             buttons.push(button);
         }
-        await this.saveGlobalButtons(buttons);
+        await this.saveGlobalButtons(buttons, emitChange);
     }
 
-    private async saveLocalButton(button: ButtonConfig): Promise<void> {
+    private async saveLocalButton(button: ButtonConfig, emitChange = true): Promise<void> {
         const buttons = this.getLocalButtons();
         const idx = buttons.findIndex(b => b.id === button.id);
         if (idx >= 0) {
@@ -233,6 +260,6 @@ export class ButtonStore {
         } else {
             buttons.push(button);
         }
-        await this.saveLocalButtons(buttons);
+        await this.saveLocalButtons(buttons, emitChange);
     }
 }

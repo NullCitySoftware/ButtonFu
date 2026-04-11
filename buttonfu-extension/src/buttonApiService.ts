@@ -11,6 +11,24 @@ import { ButtonStore } from './buttonStore';
 
 const VALID_TYPES: readonly string[] = ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'];
 const VALID_LOCALITIES: readonly string[] = ['Global', 'Local'];
+const MUTABLE_BUTTON_FIELDS: ReadonlyArray<keyof ButtonConfig> = [
+    'name',
+    'locality',
+    'description',
+    'type',
+    'executionText',
+    'terminals',
+    'category',
+    'icon',
+    'colour',
+    'copilotModel',
+    'copilotMode',
+    'copilotAttachFiles',
+    'copilotAttachActiveFile',
+    'sortOrder',
+    'warnBeforeExecution',
+    'userTokens'
+];
 const MAX_NAME = 500;
 const MAX_EXECUTION_TEXT = 100_000;
 const MAX_DESCRIPTION = 5_000;
@@ -98,12 +116,23 @@ function validateUpdateInput(input: unknown): string[] {
 // Merge helpers
 // ---------------------------------------------------------------------------
 
+function pickMutableButtonFields(input: Record<string, unknown>): Partial<ButtonConfig> {
+    const picked: Partial<ButtonConfig> = {};
+
+    for (const field of MUTABLE_BUTTON_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(input, field)) {
+            (picked as Record<string, unknown>)[field] = input[field];
+        }
+    }
+
+    return picked;
+}
+
 /** Strip non-ButtonConfig keys (e.g. openEditor) and merge with defaults. */
 function mergeCreateInput(input: Record<string, unknown>): ButtonConfig {
     const defaults = createDefaultButton(input.locality as ButtonLocality);
-    const merged = { ...input };
-    delete merged.openEditor;
-    return { ...defaults, ...merged, id: defaults.id } as ButtonConfig;
+    const merged = pickMutableButtonFields(input);
+    return { ...defaults, ...merged, id: defaults.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -167,8 +196,7 @@ export async function updateButton(store: ButtonStore, input: unknown): Promise<
     if (!existing) {
         return { success: false, errors: [`Button not found: ${obj.id}`] };
     }
-    const fields = { ...obj };
-    delete fields.openEditor;
+    const fields = pickMutableButtonFields(obj);
     const merged = { ...existing, ...fields } as ButtonConfig;
     await store.saveButton(merged, 'Agent');
     return { success: true, data: store.getButton(merged.id) ?? merged };

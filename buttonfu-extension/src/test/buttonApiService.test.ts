@@ -134,6 +134,21 @@ test('createButton strips openEditor from persisted data', async () => {
     assert.equal((saved as any).openEditor, undefined);
 });
 
+test('createButton ignores unexpected fields from API input', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, {
+        name: 'Allowlisted Only',
+        locality: 'Global',
+        unexpectedField: 'should-not-persist'
+    }) as ApiResult<ButtonConfig>;
+
+    assert.equal(result.success, true);
+    const saved = store.getButton(result.data!.id) as ButtonConfig & { unexpectedField?: string };
+    assert.equal(saved.unexpectedField, undefined);
+    assert.equal((result.data as ButtonConfig & { unexpectedField?: string }).unexpectedField, undefined);
+});
+
 // ---------------------------------------------------------------------------
 // getButton
 // ---------------------------------------------------------------------------
@@ -285,6 +300,22 @@ test('updateButton upgrades a user-created button to AgentAndUser', async () => 
     assert.equal(result.data?.createdBy, 'User');
     assert.equal(result.data?.lastModifiedBy, 'Agent');
     assert.equal(result.data?.source, 'AgentAndUser');
+});
+
+test('updateButton ignores unexpected fields from API input', async () => {
+    const { store, api } = createFixtures();
+    const created = await api.createButton(store, { name: 'Original', locality: 'Global' }) as ApiResult<ButtonConfig>;
+
+    const result = await api.updateButton(store, {
+        id: created.data!.id,
+        name: 'Still Clean',
+        unexpectedField: 'should-not-persist'
+    });
+
+    assert.equal(result.success, true);
+    const saved = store.getButton(created.data!.id) as ButtonConfig & { unexpectedField?: string };
+    assert.equal(saved.unexpectedField, undefined);
+    assert.equal((result.data as ButtonConfig & { unexpectedField?: string }).unexpectedField, undefined);
 });
 
 // ---------------------------------------------------------------------------

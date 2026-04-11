@@ -14,7 +14,9 @@ import * as buttonApi from './buttonApiService';
 import * as noteApi from './noteApiService';
 import {
     clearDevApiSmokeData,
+    clearDriveNetSmokeData,
     DEV_CLEAR_API_SMOKE_COMMAND,
+    DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND,
     DEV_MODE_CONTEXT_KEY,
     DEV_RESET_API_SMOKE_COMMAND,
     resetDevApiSmokeData
@@ -436,6 +438,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.commands.registerCommand(DEV_CLEAR_API_SMOKE_COMMAND, async () => {
                 return clearDevApiSmokeData(context);
+            })
+        );
+
+        context.subscriptions.push(
+            vscode.commands.registerCommand(DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND, async () => {
+                return clearDriveNetSmokeData();
             })
         );
     }

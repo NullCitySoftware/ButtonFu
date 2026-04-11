@@ -4,12 +4,15 @@ import { ApiResult, ButtonConfig, NoteConfig } from './types';
 export const DEV_MODE_CONTEXT_KEY = 'buttonfu.isDevelopmentMode';
 export const DEV_RESET_API_SMOKE_COMMAND = 'buttonfu.dev.resetApiSmokeData';
 export const DEV_CLEAR_API_SMOKE_COMMAND = 'buttonfu.dev.clearApiSmokeData';
+export const DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND = 'buttonfu.dev.clearDriveNetSmokeData';
 
 const DEV_API_SMOKE_STATE_KEY = 'buttonfu.dev.apiSmokeState';
 const DEV_API_SMOKE_MARKER = '[ButtonFu Dev API Smoke]';
 const DEV_API_SMOKE_CATEGORY = 'Development Smoke';
 const DEV_API_SMOKE_BUTTON_NAME = 'ButtonFu API Smoke Button';
 const DEV_API_SMOKE_NOTE_NAME = 'ButtonFu API Smoke Note';
+const DRIVE_NET_SMOKE_BUTTON_COMMAND = 'echo ButtonFu DriveNet smoke test';
+const DRIVE_NET_SMOKE_NOTE_CONTENT = 'This note was created by a Drive.NET automation test.';
 
 function buildSmokeButtonDescription(): string {
     return [
@@ -78,6 +81,28 @@ function isSmokeNote(note: NoteConfig): boolean {
         && note.content.includes(DEV_API_SMOKE_MARKER);
 }
 
+function isGuidLikeName(name: string): boolean {
+    const trimmed = name.trim();
+    return /^[0-9a-f]{32}$/i.test(trimmed)
+        || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+}
+
+function buttonContainsDriveNetSmokeCommand(button: ButtonConfig): boolean {
+    if (button.executionText.trim() === DRIVE_NET_SMOKE_BUTTON_COMMAND) {
+        return true;
+    }
+
+    return (button.terminals ?? []).some((terminal) => terminal.commands.trim() === DRIVE_NET_SMOKE_BUTTON_COMMAND);
+}
+
+function isDriveNetSmokeButton(button: ButtonConfig): boolean {
+    return isGuidLikeName(button.name) && buttonContainsDriveNetSmokeCommand(button);
+}
+
+function isDriveNetSmokeNote(note: NoteConfig): boolean {
+    return isGuidLikeName(note.name) && note.content.trim() === DRIVE_NET_SMOKE_NOTE_CONTENT;
+}
+
 async function executeApiCommand<T>(commandId: string, input?: unknown): Promise<ApiResult<T>> {
     const result = await vscode.commands.executeCommand(commandId, input);
     if (isApiResult<T>(result)) {
@@ -91,11 +116,19 @@ async function executeApiCommand<T>(commandId: string, input?: unknown): Promise
 }
 
 async function listLocalButtons(): Promise<ApiResult<ButtonConfig[]>> {
-    return executeApiCommand<ButtonConfig[]>('buttonfu.api.listButtons', { locality: 'Local' });
+    return listButtons({ locality: 'Local' });
 }
 
 async function listLocalNotes(): Promise<ApiResult<NoteConfig[]>> {
-    return executeApiCommand<NoteConfig[]>('buttonfu.api.listNotes', { locality: 'Local' });
+    return listNotes({ locality: 'Local' });
+}
+
+async function listButtons(input?: unknown): Promise<ApiResult<ButtonConfig[]>> {
+    return executeApiCommand<ButtonConfig[]>('buttonfu.api.listButtons', input);
+}
+
+async function listNotes(input?: unknown): Promise<ApiResult<NoteConfig[]>> {
+    return executeApiCommand<NoteConfig[]>('buttonfu.api.listNotes', input);
 }
 
 async function readSmokeState(workspaceState: vscode.Memento): Promise<DevApiSmokeState> {
@@ -186,6 +219,63 @@ export async function clearDevApiSmokeData(context: vscode.ExtensionContext, opt
             void vscode.window.showErrorMessage(`ButtonFu dev API smoke cleanup failed. ${errors.join(' ')}`);
         } else {
             void vscode.window.showInformationMessage(`ButtonFu dev API smoke cleanup removed ${cleanedIds.length} item(s).`);
+        }
+    }
+
+    return {
+        success: errors.length === 0,
+        cleanedIds,
+        errors: errors.length > 0 ? errors : undefined
+    };
+}
+
+export async function clearDriveNetSmokeData(options?: { silent?: boolean }): Promise<DevApiSmokeResult> {
+    const errors: string[] = [];
+    const cleanedIds: string[] = [];
+
+    const listedButtons = await listButtons();
+    if (listedButtons.success) {
+        for (const button of listedButtons.data ?? []) {
+            if (!isDriveNetSmokeButton(button)) {
+                continue;
+            }
+
+            const deleted = await executeApiCommand<{ id: string }>('buttonfu.api.deleteButton', button.id);
+            if (deleted.success) {
+                cleanedIds.push(button.id);
+                continue;
+            }
+
+            errors.push(...withFallbackErrors(`Failed to delete Drive.NET smoke button ${button.id}.`, deleted.errors));
+        }
+    } else {
+        errors.push(...withFallbackErrors('Failed to list buttons for Drive.NET smoke cleanup.', listedButtons.errors));
+    }
+
+    const listedNotes = await listNotes();
+    if (listedNotes.success) {
+        for (const note of listedNotes.data ?? []) {
+            if (!isDriveNetSmokeNote(note)) {
+                continue;
+            }
+
+            const deleted = await executeApiCommand<{ id: string }>('buttonfu.api.deleteNote', note.id);
+            if (deleted.success) {
+                cleanedIds.push(note.id);
+                continue;
+            }
+
+            errors.push(...withFallbackErrors(`Failed to delete Drive.NET smoke note ${note.id}.`, deleted.errors));
+        }
+    } else {
+        errors.push(...withFallbackErrors('Failed to list notes for Drive.NET smoke cleanup.', listedNotes.errors));
+    }
+
+    if (!options?.silent) {
+        if (errors.length > 0) {
+            void vscode.window.showErrorMessage(`ButtonFu Drive.NET smoke cleanup failed. ${errors.join(' ')}`);
+        } else {
+            void vscode.window.showInformationMessage(`ButtonFu Drive.NET smoke cleanup removed ${cleanedIds.length} item(s).`);
         }
     }
 

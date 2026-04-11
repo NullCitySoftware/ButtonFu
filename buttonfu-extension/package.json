@@ -191,6 +191,10 @@
       {
         "command": "buttonfu.dev.clearApiSmokeData",
         "title": "ButtonFu: Dev Clear API Smoke Data"
+      },
+      {
+        "command": "buttonfu.dev.clearDriveNetSmokeData",
+        "title": "ButtonFu: Dev Clear Drive.NET Smoke Data"
       }
     ],
     "menus": {
@@ -213,6 +217,10 @@
         },
         {
           "command": "buttonfu.dev.clearApiSmokeData",
+          "when": "buttonfu.isDevelopmentMode"
+        },
+        {
+          "command": "buttonfu.dev.clearDriveNetSmokeData",
           "when": "buttonfu.isDevelopmentMode"
         }
       ],
