@@ -2,38 +2,27 @@
 
 All notable changes to ButtonFu are documented here.
 
-## [Unreleased]
-
-### Changed
-- Redesigned notes to render as split buttons inside the main ButtonFu sidebar, mixed into the same Global and Workspace category groups as regular buttons
-- Added a per-note default action for the main click while keeping Preview/Open, Insert, Send to Copilot, Copy, and Edit in the split-button dropdown
-- Removed the separate Notes tree view, note folders, and tree-node workflows in favour of a flat note model with category-based organisation
-
-### Fixed
-- New notes now focus the Name field immediately when the Note Editor opens
-- Note scope selection now stays editable and persists correctly while creating or editing notes, including workspace-scoped notes in smoke-tested hosts
-- Insert into Active Editor now opens a new untitled document populated with the note content when no editor is active
-- Note editor and sidebar note interactions now validate cleanly through the full `npm test` path, including the split-button webview flows and note editor state transitions
-
 ## [1.1.2] - 
 
 ### Added 
 
 
-## [1.1.1] - 2026-04-08
+## [1.1.1] - 2026-04-11
 
 ### Added
-- **Notes tree view** — ButtonFu now includes a native Notes view with Global and Workspace scopes, nested folders, markdown/plain-text notes, preview/open, copy, insert-into-editor, send-to-Copilot, edit, move, and delete actions
-- **Prompt-enabled notes** — notes can opt into ButtonFu token resolution for copy/insert/Copilot actions, including note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteFolderPath$`
-- **Automated validation** — added Node-based integration tests covering activation, Notes storage, preview, action flows, prompt-token handling, and tree drag/drop behaviour
-- **GitHub Actions CI** — added a workflow that runs `npm test` on Windows and Ubuntu and packages the VSIX artifact
-- **Show Notes option** — the Options page now includes a `Show Notes` toggle that hides or reveals the Notes view while preserving stored note data
+- **Notes in the main sidebar** — ButtonFu now supports Global and Workspace notes directly in the main sidebar, grouped alongside buttons and supporting plain-text or Markdown content, preview/open, copy, insert, send-to-Copilot, and edit actions
+- **Prompt-enabled notes** — notes can use ButtonFu token resolution for copy, insert, and Copilot actions, including note-specific aliases like `$NoteName$`, `$NoteScope$`, and `$NoteCategory$`
+- **Show Notes option** — the Options page now includes a `Show Notes` toggle that hides or reveals notes while preserving stored note data
+
+### Changed
+- **Split-button note actions** — each note now supports a configurable default click action, while Preview/Open, Insert, Send to Copilot, Copy, and Edit remain available from the dropdown menu
+- **Simplified note organisation** — notes are organised in flat category groups inside the main sidebar instead of a separate tree with folders
 
 ### Fixed
+- New notes now focus the Name field immediately when the Note Editor opens
+- Note scope selection now stays editable and persists correctly while creating or editing notes
+- Insert into Active Editor now opens a new untitled document populated with the note content when no editor is active
 - Copilot prompt submission now restores the clipboard after successful sends and resolves attached files correctly in multi-root workspaces
-- Fixed typo: renamed `dependantOnPrevious` to `dependentOnPrevious` in terminal tab data and UI label
-- Consolidated duplicated `getNonce()`, `escapeHtml()`, and `escapeAttribute()` utilities into a single shared module
-- Button colour rendering now validates hex digits and normalises shorthand hex before CSS interpolation
 - JSONC comment stripping in keybindings parsing now respects quoted strings
 
 ## [1.1.0] - 2026-04-02
