@@ -107,16 +107,16 @@ The bridge writes a JSON file to `~/.buttonfu/bridge-{pid}.json` with:
 
 ```json
 {
-  "discoveryVersion": 2,
+  "discoveryVersion": 3,
   "bridgeName": "ButtonFu Agent Bridge",
-  "extensionVersion": "1.1.2",
+  "extensionVersion": "{version}",
   "pipeName": "\\\\.\\pipe\\buttonfu-vscode-{pid}",
   "authToken": "<256-bit hex token>",
   "protocol": "jsonrpc-2.0",
   "framing": "newline-delimited",
   "transportKind": "named-pipe",
   "describeMethod": "buttonfu.api.describe",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "capabilities": ["buttons", "notes", "introspection", "batch-operations"],
   "limits": {
     "maxMessageBytes": 1048576,
@@ -188,13 +188,13 @@ This returns all available methods, parameter schemas, type definitions, example
 
 ### Security model
 
-- **Transport**: OS named pipes (no network exposure, same-user only)
+- **Transport**: OS named pipes / Unix domain sockets (no network exposure). On Windows, named pipes are inherently same-user. On Unix, the socket is placed under `~/.buttonfu/` with restrictive permissions (0o700 directory) to prevent other-user access.
 - **Auth**: Per-session 256-bit random token, timing-safe comparison
-- **Allowlist**: Only the 10 CRUD methods + `describe` are permitted
+- **Allowlist**: The bridge permits the 10 CRUD methods, `describe`, `getBridgeContext`, and `listBridges`
 - **Rate limiting**: 60 requests per 60 seconds per connection
 - **Size cap**: 1 MB max message
 - **Concurrency**: 3 max simultaneous connections
-- **Sanitization**: UI side-effect flags (`openEditor`) are stripped from bridge requests
+- **Sanitization**: UI side-effect flags such as `openEditor` are stripped from all bridge request params, including objects nested inside arrays
 
 ## Coding Conventions
 

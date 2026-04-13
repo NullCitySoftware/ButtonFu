@@ -3,7 +3,13 @@
 All notable changes to ButtonFu are documented here.
 
 ## [1.1.2] - 2026-04-12
-- 
+
+### Added
+- **Agent Bridge** — optional named-pipe JSON-RPC server for external agent access to ButtonFu CRUD APIs, gated by `buttonfu.enableAgentBridge` setting
+- **Agent discoverability** — bridge writes a discovery file to `~/.buttonfu/bridge-{pid}.json` with auth token, pipe name, and API schema introspection
+
+### Fixed
+- Installer now uses `{autopf}` for system VS Code detection instead of `{commonpf}` (which resolved to Common Files rather than Program Files)
 
 ## [1.1.1] - 2026-04-12
 

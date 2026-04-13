@@ -41,7 +41,7 @@ The built installer is placed at:
 bin\publish\ButtonFu_{version}.exe
 ```
 
-For example: `bin\publish\ButtonFu_1.1.1.exe`
+For example: `bin\publish\ButtonFu_1.1.2.exe`
 
 ## Versioning
 
@@ -69,7 +69,7 @@ Use semantic versioning: `MAJOR.MINOR.PATCH[-PRERELEASE]`
 ### Version in Installer
 
 The version appears in:
-- Installer filename: `ButtonFu_1.1.1.exe`
+- Installer filename: `ButtonFu_{version}.exe`
 - Windows Add/Remove Programs
 - Application properties in Windows Explorer
 - Installer wizard title
@@ -168,16 +168,16 @@ The installer supports Inno Setup's standard command-line parameters for silent/
 
 ```powershell
 # Silent install - shows progress bar but no dialogs
-.\ButtonFu_1.1.1.exe /SILENT
+.\ButtonFu_{version}.exe /SILENT
 
 # Very silent install - no UI at all (fully unattended)
-.\ButtonFu_1.1.1.exe /VERYSILENT
+.\ButtonFu_{version}.exe /VERYSILENT
 
 # Silent install with custom installation directory
-.\ButtonFu_1.1.1.exe /VERYSILENT /DIR="C:\MyApps\ButtonFu"
+.\ButtonFu_{version}.exe /VERYSILENT /DIR="C:\MyApps\ButtonFu"
 
 # Full silent install with all options (recommended for automation)
-.\ButtonFu_1.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /COMPONENTS="extension"
+.\ButtonFu_{version}.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /COMPONENTS="extension"
 ```
 
 ### Command-Line Parameters
