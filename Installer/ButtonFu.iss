@@ -50,7 +50,7 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 [Run]
 ; Install VS Code extension - runasoriginaluser is crucial for per-user VS Code installations
 Filename: "{localappdata}\Programs\Microsoft VS Code\bin\code.cmd"; Parameters: "--install-extension ""{app}\{#MyVsixFileName}"" --force"; StatusMsg: "Installing VS Code extension..."; Flags: runhidden runasoriginaluser; Components: extension; Check: VSCodeUserInstallExists
-Filename: "{commonpf}\Microsoft VS Code\bin\code.cmd"; Parameters: "--install-extension ""{app}\{#MyVsixFileName}"" --force"; StatusMsg: "Installing VS Code extension..."; Flags: runhidden runasoriginaluser; Components: extension; Check: VSCodeSystemInstallExists
+Filename: "{autopf}\Microsoft VS Code\bin\code.cmd"; Parameters: "--install-extension ""{app}\{#MyVsixFileName}"" --force"; StatusMsg: "Installing VS Code extension..."; Flags: runhidden runasoriginaluser; Components: extension; Check: VSCodeSystemInstallExists
 
 [Code]
 var
@@ -83,7 +83,7 @@ begin
     Result := False;
     Exit;
   end;
-  CodePath := ExpandConstant('{commonpf}\Microsoft VS Code\bin\code.cmd');
+  CodePath := ExpandConstant('{autopf}\Microsoft VS Code\bin\code.cmd');
   Result := FileExists(CodePath);
   WriteLog('Checking VS Code system install: ' + CodePath + ' - ' + IntToStr(Ord(Result)));
 end;

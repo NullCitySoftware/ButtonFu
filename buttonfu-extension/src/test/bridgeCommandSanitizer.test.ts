@@ -21,10 +21,20 @@ test('sanitizeBridgeCommandParam removes UI side-effect flags from object params
     assert.equal((input as Record<string, unknown>).openEditors, true);
 });
 
-test('sanitizeBridgeCommandParam leaves arrays and primitives unchanged', () => {
+test('sanitizeBridgeCommandParam sanitizes objects inside arrays', () => {
+    const array = [{ openEditor: true, name: 'Test' }, { openEditors: true, id: '1' }];
+
+    const result = sanitizeBridgeCommandParam(array) as Record<string, unknown>[];
+    assert.equal(result[0].openEditor, undefined);
+    assert.equal(result[0].name, 'Test');
+    assert.equal(result[1].openEditors, undefined);
+    assert.equal(result[1].id, '1');
+    // Original array should not be mutated
+    assert.equal((array[0] as Record<string, unknown>).openEditor, true);
+});
+
+test('sanitizeBridgeCommandParam leaves primitives unchanged', () => {
     const primitive = 'button-id';
-    const array = [{ openEditor: true }];
 
     assert.equal(sanitizeBridgeCommandParam(primitive), primitive);
-    assert.equal(sanitizeBridgeCommandParam(array), array);
 });

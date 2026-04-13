@@ -609,7 +609,7 @@ test('multiple sequential requests on one connection succeed', async () => {
 // Notification (no id) handling
 // ---------------------------------------------------------------------------
 
-test('request without id returns response with null id', async () => {
+test('notification (no id) executes the command but sends no response', async () => {
     const exec = createFakeExecuteCommand({ success: true });
     const bridge = new AgentBridge(exec, createTestLogger());
     await bridge.start();
@@ -617,15 +617,28 @@ test('request without id returns response with null id', async () => {
     try {
         const info = readBridgeInfo();
         const client = await connectToBridge(info.pipeName);
+
+        // Send notification (no id field)
         client.send({
             jsonrpc: '2.0',
             method: 'buttonfu.api.listButtons',
             auth: info.authToken
         });
 
+        // Send a follow-up request with id to confirm the socket is still alive
+        // and the notification was silently consumed.
+        client.send({
+            jsonrpc: '2.0',
+            id: 'after-notification',
+            method: 'buttonfu.api.listButtons',
+            auth: info.authToken
+        });
+
         const raw = await client.readLine();
         const response = JSON.parse(raw);
-        assert.equal(response.id, null);
+        // The first response we get should be from the follow-up request,
+        // proving the notification produced no response.
+        assert.equal(response.id, 'after-notification');
         assert.equal(response.error, undefined);
 
         client.destroy();

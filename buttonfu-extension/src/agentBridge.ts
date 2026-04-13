@@ -156,7 +156,7 @@ export function getBridgeFilePath(pid: number): string {
 export function getPipeName(pid: number): string {
     return process.platform === 'win32'
         ? `\\\\.\\pipe\\buttonfu-vscode-${pid}`
-        : path.join(os.tmpdir(), `buttonfu-vscode-${pid}.sock`);
+        : path.join(getBridgeDirectory(), `buttonfu-vscode-${pid}.sock`);
 }
 
 function buildBridgeInfo(
@@ -306,6 +306,10 @@ export class AgentBridge {
         const pid = process.pid;
         const pipeName = getPipeName(pid);
 
+        // Ensure bridge directory exists (socket file lives here on Unix)
+        const bridgeDir = getBridgeDirectory();
+        fs.mkdirSync(bridgeDir, { recursive: true, mode: 0o700 });
+
         // On Unix, remove a leftover socket file so listen() doesn't EADDRINUSE
         if (process.platform !== 'win32') {
             try { fs.unlinkSync(pipeName); } catch { /* nothing to remove */ }
@@ -328,8 +332,6 @@ export class AgentBridge {
 
         // Write bridge discovery file
         cleanStaleBridgeFiles();
-        const bridgeDir = getBridgeDirectory();
-        fs.mkdirSync(bridgeDir, { recursive: true, mode: 0o700 });
         this.bridgeFilePath = getBridgeFilePath(pid);
 
         const info = buildBridgeInfo(pid, pipeName, this.authToken, this.extensionVersion, this.workspaceContext);
@@ -483,6 +485,9 @@ export class AgentBridge {
         }
 
         // --- validate id (must be string, number, or null per spec) ---
+        // Per JSON-RPC 2.0, a request without an 'id' property is a notification
+        // and MUST NOT receive a response.
+        const isNotification = !('id' in request);
         const id = request.id ?? null;
         if (id !== null && typeof id !== 'string' && typeof id !== 'number') {
             this.sendError(socket, null, INVALID_REQUEST, 'Request id must be a string, number, or null.');
@@ -491,7 +496,7 @@ export class AgentBridge {
 
         // --- authenticate ---
         if (typeof request.auth !== 'string') {
-            this.sendError(socket, id, AUTH_ERROR, 'Authentication required.');
+            if (!isNotification) { this.sendError(socket, id, AUTH_ERROR, 'Authentication required.'); }
             return;
         }
 
@@ -499,32 +504,32 @@ export class AgentBridge {
         const expectedBuf = Buffer.from(this.authToken, 'utf-8');
 
         if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
-            this.sendError(socket, id, AUTH_ERROR, 'Authentication failed.');
+            if (!isNotification) { this.sendError(socket, id, AUTH_ERROR, 'Authentication failed.'); }
             return;
         }
 
         // --- introspection (describe) ---
         if (request.method === DESCRIBE_METHOD) {
-            this.sendResult(socket, id, buildApiSchema(this.extensionVersion));
+            if (!isNotification) { this.sendResult(socket, id, buildApiSchema(this.extensionVersion)); }
             return;
         }
 
         // --- getBridgeContext ---
         if (request.method === GET_BRIDGE_CONTEXT_METHOD) {
-            this.sendResult(socket, id, this.buildBridgeContext());
+            if (!isNotification) { this.sendResult(socket, id, this.buildBridgeContext()); }
             return;
         }
 
         // --- listBridges ---
         if (request.method === LIST_BRIDGES_METHOD) {
             cleanStaleBridgeFiles();
-            this.sendResult(socket, id, { bridges: listBridgeFiles() });
+            if (!isNotification) { this.sendResult(socket, id, { bridges: listBridgeFiles() }); }
             return;
         }
 
         // --- authorise ---
         if (!ALLOWED_METHODS.has(request.method)) {
-            this.sendError(socket, id, METHOD_NOT_FOUND, `Method not allowed: ${request.method}`);
+            if (!isNotification) { this.sendError(socket, id, METHOD_NOT_FOUND, `Method not allowed: ${request.method}`); }
             return;
         }
 
@@ -533,8 +538,10 @@ export class AgentBridge {
         if (params && typeof params === 'object' && typeof params.targetWindowId === 'string') {
             const currentWindowId = this.workspaceContext?.getWindowId() ?? '';
             if (currentWindowId && params.targetWindowId !== currentWindowId) {
-                this.sendError(socket, id, WORKSPACE_MISMATCH_ERROR,
-                    `Workspace mismatch: request targeted windowId "${params.targetWindowId}" but this bridge belongs to windowId "${currentWindowId}".`);
+                if (!isNotification) {
+                    this.sendError(socket, id, WORKSPACE_MISMATCH_ERROR,
+                        `Workspace mismatch: request targeted windowId "${params.targetWindowId}" but this bridge belongs to windowId "${currentWindowId}".`);
+                }
                 return;
             }
         }
@@ -542,12 +549,16 @@ export class AgentBridge {
         // --- execute ---
         try {
             const result = await this.executeCommand(request.method, request.params);
-            // Enrich mutation responses with bridge context
-            const enriched = this.enrichResult(request.method, result);
-            this.sendResult(socket, id, enriched);
+            if (!isNotification) {
+                // Enrich mutation responses with bridge context
+                const enriched = this.enrichResult(request.method, result);
+                this.sendResult(socket, id, enriched);
+            }
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Internal error.';
-            this.sendError(socket, id, INTERNAL_ERROR, message);
+            if (!isNotification) {
+                const message = err instanceof Error ? err.message : 'Internal error.';
+                this.sendError(socket, id, INTERNAL_ERROR, message);
+            }
         }
     }
 
