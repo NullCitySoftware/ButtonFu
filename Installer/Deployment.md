@@ -41,7 +41,7 @@ The built installer is placed at:
 bin\publish\ButtonFu_{version}.exe
 ```
 
-For example: `bin\publish\ButtonFu_1.1.2.exe`
+For example: `bin\publish\ButtonFu_{version}.exe`
 
 ## Versioning
 

@@ -8,6 +8,7 @@ test('buildApiSchema returns well-formed schema with correct version', () => {
     assert.equal(schema.schemaVersion, 2);
     assert.equal(schema.name, 'ButtonFu Agent Bridge');
     assert.equal(schema.methods.length, 12);
+    assert.equal(schema.transport, 'OS named pipe (Windows: \\\\.\\pipe\\buttonfu-vscode-{pid}, Unix: ~/.buttonfu/buttonfu-vscode-{pid}.sock)');
 
     // Every method has required fields
     for (const m of schema.methods) {

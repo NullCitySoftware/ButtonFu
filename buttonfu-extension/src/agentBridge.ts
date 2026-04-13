@@ -2,8 +2,9 @@
  * Named-pipe JSON-RPC bridge for external agent access to the ButtonFu API.
  *
  * Security model:
- *  - Transport: OS named pipe (no network port).  Only same-user processes
- *    can connect on both Windows and Unix.
+ *  - Transport: local IPC only (Windows named pipes / Unix domain sockets).
+ *    On Unix, the bridge directory, socket file, and discovery file are
+ *    chmod'd to restrictive permissions before use.
  *  - Authentication: per-session 256-bit random token verified with
  *    crypto.timingSafeEqual on every request.
  *  - Authorisation: strict static allowlist of ButtonFu API method names.
@@ -11,8 +12,8 @@
  *  - Resource caps: 1 MB max message, 3 max concurrent connections.
  *  - Discovery: bridge info (pipe name, auth token, PID) written to
  *    ~/.buttonfu/bridge-{pid}.json with restrictive permissions.
- *  - Lifecycle: stale bridge files are cleaned on start; bridge file is
- *    deleted on stop / deactivate.
+ *  - Lifecycle: stale bridge files are cleaned on start; bridge file and
+ *    Unix socket are deleted on stop / deactivate.
  */
 
 import * as net from 'net';
@@ -159,6 +160,75 @@ export function getPipeName(pid: number): string {
         : path.join(getBridgeDirectory(), `buttonfu-vscode-${pid}.sock`);
 }
 
+function ensureSecureBridgeDirectory(): string {
+    const bridgeDir = getBridgeDirectory();
+    fs.mkdirSync(bridgeDir, { recursive: true, mode: 0o700 });
+
+    if (process.platform !== 'win32') {
+        fs.chmodSync(bridgeDir, 0o700);
+        const permissions = fs.statSync(bridgeDir).mode & 0o777;
+        if ((permissions & 0o077) !== 0) {
+            throw new Error(`Bridge directory must not be group/world accessible: ${bridgeDir}`);
+        }
+    }
+
+    return bridgeDir;
+}
+
+function writeBridgeInfoFile(filePath: string, info: BridgeInfo): void {
+    const content = JSON.stringify(info, null, 2);
+
+    if (process.platform === 'win32') {
+        fs.writeFileSync(filePath, content, { encoding: 'utf-8' });
+        return;
+    }
+
+    const tmpPath = `${filePath}.${process.pid}.tmp`;
+    try {
+        fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
+        fs.renameSync(tmpPath, filePath);
+        fs.chmodSync(filePath, 0o600);
+    } finally {
+        try { fs.unlinkSync(tmpPath); } catch { /* already renamed or absent */ }
+    }
+}
+
+function removeUnixSocketFile(pipeName: string): void {
+    if (!pipeName || process.platform === 'win32') {
+        return;
+    }
+
+    try { fs.unlinkSync(pipeName); } catch { /* already gone */ }
+}
+
+function getJsonRpcErrorId(request: unknown): number | string | null {
+    if (!request || typeof request !== 'object' || Array.isArray(request)) {
+        return null;
+    }
+
+    const id = (request as { id?: unknown }).id;
+    return id === null || typeof id === 'string' || typeof id === 'number'
+        ? id
+        : null;
+}
+
+function isNotificationRequest(request: unknown): boolean {
+    return !!request
+        && typeof request === 'object'
+        && !Array.isArray(request)
+        && !('id' in request);
+}
+
+function authTokensMatch(providedToken: string, expectedToken: string): boolean {
+    const expectedBuf = Buffer.from(expectedToken, 'utf-8');
+    const providedRaw = Buffer.from(providedToken, 'utf-8');
+    const providedBuf = Buffer.alloc(expectedBuf.length);
+    providedRaw.copy(providedBuf, 0, 0, expectedBuf.length);
+
+    const tokensMatch = crypto.timingSafeEqual(providedBuf, expectedBuf);
+    return tokensMatch && providedRaw.length === expectedBuf.length;
+}
+
 function buildBridgeInfo(
     pid: number,
     pipeName: string,
@@ -243,6 +313,7 @@ export function listBridgeFiles(): Array<Omit<BridgeInfo, 'authToken'>> {
         if (!file.startsWith('bridge-') || !file.endsWith('.json')) {
             continue;
         }
+
         const filePath = path.join(dir, file);
         try {
             const raw = fs.readFileSync(filePath, 'utf-8');
@@ -268,6 +339,7 @@ export class AgentBridge {
     private server: net.Server | null = null;
     private authToken = '';
     private bridgeFilePath = '';
+    private pipeName = '';
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     private readonly connections = new Set<net.Socket>();
     private readonly connectionRates = new WeakMap<net.Socket, number[]>();
@@ -300,19 +372,15 @@ export class AgentBridge {
         }
         this.disposed = false;
 
-        // Generate per-session auth token
         this.authToken = crypto.randomBytes(AUTH_TOKEN_BYTES).toString('hex');
 
         const pid = process.pid;
         const pipeName = getPipeName(pid);
 
-        // Ensure bridge directory exists (socket file lives here on Unix)
-        const bridgeDir = getBridgeDirectory();
-        fs.mkdirSync(bridgeDir, { recursive: true, mode: 0o700 });
+        ensureSecureBridgeDirectory();
 
-        // On Unix, remove a leftover socket file so listen() doesn't EADDRINUSE
         if (process.platform !== 'win32') {
-            try { fs.unlinkSync(pipeName); } catch { /* nothing to remove */ }
+            removeUnixSocketFile(pipeName);
         }
 
         this.server = net.createServer((socket) => this.onConnection(socket));
@@ -323,40 +391,75 @@ export class AgentBridge {
                 this.server = null;
                 reject(err);
             };
+
             this.server!.once('error', onError);
             this.server!.listen(pipeName, () => {
                 this.server!.removeListener('error', onError);
+
+                if (process.platform !== 'win32') {
+                    try {
+                        fs.chmodSync(pipeName, 0o600);
+                    } catch (err) {
+                        this.server!.close(() => {
+                            this.server = null;
+                            removeUnixSocketFile(pipeName);
+                            reject(err as Error);
+                        });
+                        return;
+                    }
+                }
+
                 resolve();
             });
         });
 
-        // Write bridge discovery file
-        cleanStaleBridgeFiles();
-        this.bridgeFilePath = getBridgeFilePath(pid);
+        this.pipeName = pipeName;
 
-        const info = buildBridgeInfo(pid, pipeName, this.authToken, this.extensionVersion, this.workspaceContext);
+        try {
+            cleanStaleBridgeFiles();
+            this.bridgeFilePath = getBridgeFilePath(pid);
 
-        fs.writeFileSync(this.bridgeFilePath, JSON.stringify(info, null, 2), {
-            encoding: 'utf-8',
-            mode: 0o600
-        });
+            const info = buildBridgeInfo(pid, pipeName, this.authToken, this.extensionVersion, this.workspaceContext);
+            writeBridgeInfoFile(this.bridgeFilePath, info);
 
-        // Heartbeat: periodically update lastHeartbeatAt so other processes
-        // can detect stale bridges even when the PID is still alive.
-        this.heartbeatTimer = setInterval(() => {
-            if (!this.bridgeFilePath) { return; }
-            try {
-                const raw = fs.readFileSync(this.bridgeFilePath, 'utf-8');
-                const current: BridgeInfo = JSON.parse(raw);
-                current.lastHeartbeatAt = new Date().toISOString();
-                fs.writeFileSync(this.bridgeFilePath, JSON.stringify(current, null, 2), {
-                    encoding: 'utf-8',
-                    mode: 0o600
-                });
-            } catch {
-                // best effort — file may be gone during shutdown
+            this.heartbeatTimer = setInterval(() => {
+                if (!this.bridgeFilePath) {
+                    return;
+                }
+
+                try {
+                    const raw = fs.readFileSync(this.bridgeFilePath, 'utf-8');
+                    const current: BridgeInfo = JSON.parse(raw);
+                    current.lastHeartbeatAt = new Date().toISOString();
+                    writeBridgeInfoFile(this.bridgeFilePath, current);
+                } catch {
+                    // best effort — file may be gone during shutdown
+                }
+            }, HEARTBEAT_INTERVAL_MS);
+        } catch (err) {
+            if (this.heartbeatTimer) {
+                clearInterval(this.heartbeatTimer);
+                this.heartbeatTimer = null;
             }
-        }, HEARTBEAT_INTERVAL_MS);
+
+            if (this.server) {
+                await new Promise<void>((resolve) => {
+                    this.server!.close(() => resolve());
+                });
+                this.server = null;
+            }
+
+            removeUnixSocketFile(this.pipeName);
+            this.pipeName = '';
+            this.authToken = '';
+
+            if (this.bridgeFilePath) {
+                try { fs.unlinkSync(this.bridgeFilePath); } catch { /* already gone */ }
+                this.bridgeFilePath = '';
+            }
+
+            throw err;
+        }
 
         this.logger.log(`[AgentBridge] Listening on ${pipeName}`);
         this.logger.log(`[AgentBridge] Bridge info: ${this.bridgeFilePath}`);
@@ -385,13 +488,15 @@ export class AgentBridge {
             this.server = null;
         }
 
-        // Clear the auth token so it is not retained in memory after shutdown.
         this.authToken = '';
 
         if (this.bridgeFilePath) {
             try { fs.unlinkSync(this.bridgeFilePath); } catch { /* already gone */ }
             this.bridgeFilePath = '';
         }
+
+        removeUnixSocketFile(this.pipeName);
+        this.pipeName = '';
 
         this.logger.log('[AgentBridge] Stopped.');
     }
@@ -426,8 +531,6 @@ export class AgentBridge {
                 buffer = buffer.substring(newlineIdx + 1);
                 if (line) {
                     this.processMessage(socket, line).catch(() => {
-                        // Safety net — processMessage handles its own errors,
-                        // but guard against truly unexpected rejections.
                         socket.destroy();
                     });
                 }
@@ -448,23 +551,7 @@ export class AgentBridge {
     // ------------------------------------------------------------------
 
     private async processMessage(socket: net.Socket, raw: string): Promise<void> {
-        // --- rate limit ---
-        const timestamps = this.connectionRates.get(socket);
-        if (timestamps) {
-            const now = Date.now();
-            // Evict timestamps outside the window
-            while (timestamps.length > 0 && now - timestamps[0] >= RATE_WINDOW_MS) {
-                timestamps.shift();
-            }
-            if (timestamps.length >= RATE_MAX_REQUESTS) {
-                this.sendError(socket, null, RATE_LIMITED_ERROR, 'Rate limit exceeded. Try again later.');
-                return;
-            }
-            timestamps.push(now);
-        }
-
-        // --- parse ---
-        let request: JsonRpcRequest;
+        let request: unknown;
         try {
             request = JSON.parse(raw);
         } catch {
@@ -472,86 +559,106 @@ export class AgentBridge {
             return;
         }
 
-        // --- structural validation ---
+        const isNotification = isNotificationRequest(request);
+
+        const timestamps = this.connectionRates.get(socket);
+        if (timestamps) {
+            const now = Date.now();
+            while (timestamps.length > 0 && now - timestamps[0] >= RATE_WINDOW_MS) {
+                timestamps.shift();
+            }
+            if (timestamps.length >= RATE_MAX_REQUESTS) {
+                if (!isNotification) {
+                    this.sendError(socket, null, RATE_LIMITED_ERROR, 'Rate limit exceeded. Try again later.');
+                }
+                return;
+            }
+            timestamps.push(now);
+        }
+
         if (
             !request ||
             typeof request !== 'object' ||
             Array.isArray(request) ||
-            request.jsonrpc !== '2.0' ||
-            typeof request.method !== 'string'
+            (request as JsonRpcRequest).jsonrpc !== '2.0' ||
+            typeof (request as JsonRpcRequest).method !== 'string'
         ) {
-            this.sendError(socket, request?.id ?? null, INVALID_REQUEST, 'Invalid JSON-RPC 2.0 request.');
+            if (!isNotification) {
+                this.sendError(socket, getJsonRpcErrorId(request), INVALID_REQUEST, 'Invalid JSON-RPC 2.0 request.');
+            }
             return;
         }
 
-        // --- validate id (must be string, number, or null per spec) ---
-        // Per JSON-RPC 2.0, a request without an 'id' property is a notification
-        // and MUST NOT receive a response.
-        const isNotification = !('id' in request);
-        const id = request.id ?? null;
+        const rpcRequest = request as JsonRpcRequest;
+        const id = rpcRequest.id ?? null;
         if (id !== null && typeof id !== 'string' && typeof id !== 'number') {
             this.sendError(socket, null, INVALID_REQUEST, 'Request id must be a string, number, or null.');
             return;
         }
 
-        // --- authenticate ---
-        if (typeof request.auth !== 'string') {
-            if (!isNotification) { this.sendError(socket, id, AUTH_ERROR, 'Authentication required.'); }
+        if (typeof rpcRequest.auth !== 'string') {
+            if (!isNotification) {
+                this.sendError(socket, id, AUTH_ERROR, 'Authentication required.');
+            }
             return;
         }
 
-        const providedBuf = Buffer.from(request.auth, 'utf-8');
-        const expectedBuf = Buffer.from(this.authToken, 'utf-8');
-
-        if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
-            if (!isNotification) { this.sendError(socket, id, AUTH_ERROR, 'Authentication failed.'); }
+        if (!authTokensMatch(rpcRequest.auth, this.authToken)) {
+            if (!isNotification) {
+                this.sendError(socket, id, AUTH_ERROR, 'Authentication failed.');
+            }
             return;
         }
 
-        // --- introspection (describe) ---
-        if (request.method === DESCRIBE_METHOD) {
-            if (!isNotification) { this.sendResult(socket, id, buildApiSchema(this.extensionVersion)); }
+        if (rpcRequest.method === DESCRIBE_METHOD) {
+            if (!isNotification) {
+                this.sendResult(socket, id, buildApiSchema(this.extensionVersion));
+            }
             return;
         }
 
-        // --- getBridgeContext ---
-        if (request.method === GET_BRIDGE_CONTEXT_METHOD) {
-            if (!isNotification) { this.sendResult(socket, id, this.buildBridgeContext()); }
+        if (rpcRequest.method === GET_BRIDGE_CONTEXT_METHOD) {
+            if (!isNotification) {
+                this.sendResult(socket, id, this.buildBridgeContext());
+            }
             return;
         }
 
-        // --- listBridges ---
-        if (request.method === LIST_BRIDGES_METHOD) {
+        if (rpcRequest.method === LIST_BRIDGES_METHOD) {
             cleanStaleBridgeFiles();
-            if (!isNotification) { this.sendResult(socket, id, { bridges: listBridgeFiles() }); }
+            if (!isNotification) {
+                this.sendResult(socket, id, { bridges: listBridgeFiles() });
+            }
             return;
         }
 
-        // --- authorise ---
-        if (!ALLOWED_METHODS.has(request.method)) {
-            if (!isNotification) { this.sendError(socket, id, METHOD_NOT_FOUND, `Method not allowed: ${request.method}`); }
+        if (!ALLOWED_METHODS.has(rpcRequest.method)) {
+            if (!isNotification) {
+                this.sendError(socket, id, METHOD_NOT_FOUND, `Method not allowed: ${rpcRequest.method}`);
+            }
             return;
         }
 
-        // --- workspace targeting: reject local operations aimed at wrong window ---
-        const params = request.params as Record<string, unknown> | undefined;
+        const params = rpcRequest.params as Record<string, unknown> | undefined;
         if (params && typeof params === 'object' && typeof params.targetWindowId === 'string') {
             const currentWindowId = this.workspaceContext?.getWindowId() ?? '';
             if (currentWindowId && params.targetWindowId !== currentWindowId) {
                 if (!isNotification) {
-                    this.sendError(socket, id, WORKSPACE_MISMATCH_ERROR,
-                        `Workspace mismatch: request targeted windowId "${params.targetWindowId}" but this bridge belongs to windowId "${currentWindowId}".`);
+                    this.sendError(
+                        socket,
+                        id,
+                        WORKSPACE_MISMATCH_ERROR,
+                        `Workspace mismatch: request targeted windowId "${params.targetWindowId}" but this bridge belongs to windowId "${currentWindowId}".`
+                    );
                 }
                 return;
             }
         }
 
-        // --- execute ---
         try {
-            const result = await this.executeCommand(request.method, request.params);
+            const result = await this.executeCommand(rpcRequest.method, rpcRequest.params);
             if (!isNotification) {
-                // Enrich mutation responses with bridge context
-                const enriched = this.enrichResult(request.method, result);
+                const enriched = this.enrichResult(rpcRequest.method, result);
                 this.sendResult(socket, id, enriched);
             }
         } catch (err: unknown) {
@@ -601,7 +708,6 @@ export class AgentBridge {
         }
         const ctx = this.buildBridgeContext();
         if (Array.isArray(result)) {
-            // Batch: attach to each item
             return result.map(item =>
                 (item && typeof item === 'object')
                     ? { ...item, bridgeContext: ctx }
@@ -623,7 +729,6 @@ export class AgentBridge {
             const response: JsonRpcResponse = { jsonrpc: '2.0', id, result };
             socket.write(JSON.stringify(response) + '\n');
         } catch {
-            // Non-serializable result — fall back to an internal error.
             this.sendError(socket, id, INTERNAL_ERROR, 'Response serialisation failed.');
         }
     }

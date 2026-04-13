@@ -129,7 +129,7 @@ The bridge writes a JSON file to `~/.buttonfu/bridge-{pid}.json` with:
 }
 ```
 
-On Unix, `pipeName` is `/tmp/buttonfu-vscode-{pid}.sock`. Scan `~/.buttonfu/bridge-*.json` to find active instances.
+On Unix, `pipeName` is `~/.buttonfu/buttonfu-vscode-{pid}.sock`. Scan `~/.buttonfu/bridge-*.json` to find active instances.
 
 ### Authentication
 
@@ -188,7 +188,7 @@ This returns all available methods, parameter schemas, type definitions, example
 
 ### Security model
 
-- **Transport**: OS named pipes / Unix domain sockets (no network exposure). On Windows, named pipes are inherently same-user. On Unix, the socket is placed under `~/.buttonfu/` with restrictive permissions (0o700 directory) to prevent other-user access.
+- **Transport**: OS named pipes / Unix domain sockets (no network exposure). On Windows, named pipes are inherently same-user. On Unix, the bridge directory is enforced to `0o700`, and both the socket and discovery file are written with `0o600` permissions.
 - **Auth**: Per-session 256-bit random token, timing-safe comparison
 - **Allowlist**: The bridge permits the 10 CRUD methods, `describe`, `getBridgeContext`, and `listBridges`
 - **Rate limiting**: 60 requests per 60 seconds per connection
