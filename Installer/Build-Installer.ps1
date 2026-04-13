@@ -25,8 +25,22 @@ $ExtensionDir = Join-Path $ProjectRoot "buttonfu-extension"
 $InnoScript = Join-Path $InstallerDir "ButtonFu.iss"
 $ExtensionPackageJson = Join-Path $ExtensionDir "package.json"
 
-# Installer version follows the extension package version in package.json.
-$Version = (Get-Content $ExtensionPackageJson -Raw | ConvertFrom-Json).version
+# Installer metadata follows the extension package manifest so release artifacts stay aligned.
+$PackageManifest = Get-Content $ExtensionPackageJson -Raw | ConvertFrom-Json
+$Version = $PackageManifest.version
+$RepositoryUrl = if ($PackageManifest.repository -is [string]) {
+    [string]$PackageManifest.repository
+}
+elseif ($PackageManifest.repository -and $PackageManifest.repository.url) {
+    [string]$PackageManifest.repository.url
+}
+else {
+    'https://github.com/NullCitySoftware/buttonfu'
+}
+
+if ($RepositoryUrl.EndsWith('.git')) {
+    $RepositoryUrl = $RepositoryUrl.Substring(0, $RepositoryUrl.Length - 4)
+}
 
 # Find Inno Setup compiler
 $InnoSetupPaths = @(
@@ -117,6 +131,7 @@ Write-Host "[3/3] Building Inno Setup installer..." -ForegroundColor Yellow
 # Compile the installer
 $IsccArgs = @(
     "/DMyAppVersion=$Version"
+    "/DMyAppURL=$RepositoryUrl"
     "/DMyVsixFileName=$($vsixFile.Name)"
     $InnoScript
 )

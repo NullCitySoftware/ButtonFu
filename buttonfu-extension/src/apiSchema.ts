@@ -228,7 +228,7 @@ export function buildApiSchema(extensionVersion: string): ApiSchemaRoot {
         version: extensionVersion,
         schemaVersion: AGENT_BRIDGE_SCHEMA_VERSION,
         protocol: 'JSON-RPC 2.0 over newline-delimited named pipe',
-        transport: 'OS named pipe (Windows: \\\\.\\pipe\\buttonfu-vscode-{pid}, Unix: /tmp/buttonfu-vscode-{pid}.sock)',
+        transport: 'OS named pipe (Windows: \\\\.\\pipe\\buttonfu-vscode-{pid}, Unix: ~/.buttonfu/buttonfu-vscode-{pid}.sock)',
         description:
             'Programmatic CRUD API for managing ButtonFu buttons and notes. ' +
             'Agents discover the pipe via ~/.buttonfu/bridge-{pid}.json which ' +

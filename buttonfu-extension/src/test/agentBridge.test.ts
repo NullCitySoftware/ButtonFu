@@ -57,6 +57,7 @@ function connectToBridge(pipeName: string): Promise<{
     socket: net.Socket;
     send(obj: Record<string, unknown>): void;
     readLine(): Promise<string>;
+    readLineWithin(timeoutMs: number): Promise<string | null>;
     destroy(): void;
 }> {
     return new Promise((resolve, reject) => {
@@ -94,6 +95,36 @@ function connectToBridge(pipeName: string): Promise<{
                     }
                     return new Promise((res) => {
                         waiters.push(res);
+                    });
+                },
+                readLineWithin(timeoutMs: number): Promise<string | null> {
+                    const queued = lineQueue.shift();
+                    if (queued) {
+                        return Promise.resolve(queued);
+                    }
+
+                    return new Promise((res) => {
+                        let timeout: ReturnType<typeof setTimeout> | undefined;
+                        const waiter = (line: string) => {
+                            if (timeout) {
+                                clearTimeout(timeout);
+                            }
+                            const waiterIndex = waiters.indexOf(waiter);
+                            if (waiterIndex !== -1) {
+                                waiters.splice(waiterIndex, 1);
+                            }
+                            res(line);
+                        };
+
+                        timeout = setTimeout(() => {
+                            const waiterIndex = waiters.indexOf(waiter);
+                            if (waiterIndex !== -1) {
+                                waiters.splice(waiterIndex, 1);
+                            }
+                            res(null);
+                        }, timeoutMs);
+
+                        waiters.push(waiter);
                     });
                 },
                 destroy(): void {
@@ -150,6 +181,21 @@ test('bridge starts, writes bridge file, and stops cleanly', async () => {
     await bridge.stop();
     assert.equal(bridge.isRunning, false);
     assert.equal(fs.existsSync(getBridgeFilePath(process.pid)), false);
+});
+
+test('bridge stop removes the unix socket file', async () => {
+    if (process.platform === 'win32') {
+        return;
+    }
+
+    const bridge = new AgentBridge(createFakeExecuteCommand(), createTestLogger());
+    await bridge.start();
+
+    const info = readBridgeInfo();
+    assert.equal(fs.existsSync(info.pipeName), true);
+
+    await bridge.stop();
+    assert.equal(fs.existsSync(info.pipeName), false);
 });
 
 test('bridge start is idempotent', async () => {
@@ -453,6 +499,40 @@ test('non-string method returns invalid-request error', async () => {
     }
 });
 
+test('oversized messages are rejected before command execution', async () => {
+    const exec = createFakeExecuteCommand({ success: true });
+    const bridge = new AgentBridge(exec, createTestLogger());
+    await bridge.start();
+
+    try {
+        const info = readBridgeInfo();
+        const client = await connectToBridge(info.pipeName);
+        const closed = new Promise<void>((resolve) => {
+            client.socket.once('close', () => resolve());
+        });
+
+        client.socket.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'too-large',
+            method: 'buttonfu.api.listButtons',
+            auth: info.authToken,
+            params: {
+                payload: 'x'.repeat(1_048_600)
+            }
+        }) + '\n');
+
+        const raw = await client.readLine();
+        const response = JSON.parse(raw);
+        assert.equal(response.id, null);
+        assert.equal(response.error?.code, -32002);
+        assert.equal(exec.calls.length, 0);
+
+        await closed;
+    } finally {
+        await bridge.stop();
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Rate limiting
 // ---------------------------------------------------------------------------
@@ -486,9 +566,46 @@ test('requests beyond rate limit are rejected', async () => {
         // First 60 should succeed, 61st should be rate-limited
         const rateLimited = responses.filter((r) => r.error?.code === -32001);
         assert.ok(rateLimited.length >= 1, 'At least one request should be rate-limited');
+        assert.equal(rateLimited[0]?.id, 260);
 
         const succeeded = responses.filter((r) => !r.error);
         assert.equal(succeeded.length, 60);
+
+        client.destroy();
+    } finally {
+        await bridge.stop();
+    }
+});
+
+test('rate-limited notifications are dropped without a response', async () => {
+    const exec = createFakeExecuteCommand({ success: true });
+    const bridge = new AgentBridge(exec, createTestLogger());
+    await bridge.start();
+
+    try {
+        const info = readBridgeInfo();
+        const client = await connectToBridge(info.pipeName);
+
+        for (let i = 0; i < 60; i++) {
+            client.send({
+                jsonrpc: '2.0',
+                id: 700 + i,
+                method: 'buttonfu.api.listButtons',
+                auth: info.authToken
+            });
+            const raw = await client.readLine();
+            const response = JSON.parse(raw);
+            assert.equal(response.error, undefined);
+        }
+
+        client.send({
+            jsonrpc: '2.0',
+            method: 'buttonfu.api.listButtons',
+            auth: info.authToken
+        });
+
+        assert.equal(await client.readLineWithin(100), null);
+        assert.equal(exec.calls.length, 60);
 
         client.destroy();
     } finally {
@@ -647,6 +764,39 @@ test('notification (no id) executes the command but sends no response', async ()
     }
 });
 
+test('invalid notification is dropped without an invalid-request response', async () => {
+    const bridge = new AgentBridge(createFakeExecuteCommand({ success: true }), createTestLogger());
+    await bridge.start();
+
+    try {
+        const info = readBridgeInfo();
+        const client = await connectToBridge(info.pipeName);
+
+        client.send({
+            method: 'buttonfu.api.listButtons',
+            auth: info.authToken
+        });
+
+        assert.equal(await client.readLineWithin(100), null);
+
+        client.send({
+            jsonrpc: '2.0',
+            id: 'after-invalid-notification',
+            method: 'buttonfu.api.listButtons',
+            auth: info.authToken
+        });
+
+        const raw = await client.readLine();
+        const response = JSON.parse(raw);
+        assert.equal(response.id, 'after-invalid-notification');
+        assert.equal(response.error, undefined);
+
+        client.destroy();
+    } finally {
+        await bridge.stop();
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Introspection (describe)
 // ---------------------------------------------------------------------------
@@ -676,6 +826,7 @@ test('describe returns API schema with methods, types, and error codes', async (
         assert.equal(schema.version, '1.2.3');
         assert.equal(schema.schemaVersion, 2);
         assert.equal(schema.protocol, 'JSON-RPC 2.0 over newline-delimited named pipe');
+        assert.equal(schema.transport, 'OS named pipe (Windows: \\\\.\\pipe\\buttonfu-vscode-{pid}, Unix: ~/.buttonfu/buttonfu-vscode-{pid}.sock)');
 
         // 10 CRUD + 2 introspection methods
         const methodNames = schema.methods.map((m: { method: string }) => m.method);

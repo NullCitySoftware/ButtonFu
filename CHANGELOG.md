@@ -2,16 +2,10 @@
 
 All notable changes to ButtonFu are documented here.
 
-## [1.1.2] - 2026-04-12
+## [1.1.2] - 2026-04-13
+- 
 
-### Added
-- **Agent Bridge** — optional named-pipe JSON-RPC server for external agent access to ButtonFu CRUD APIs, gated by `buttonfu.enableAgentBridge` setting
-- **Agent discoverability** — bridge writes a discovery file to `~/.buttonfu/bridge-{pid}.json` with auth token, pipe name, and API schema introspection
-
-### Fixed
-- Installer now uses `{autopf}` for system VS Code detection instead of `{commonpf}` (which resolved to Common Files rather than Program Files)
-
-## [1.1.1] - 2026-04-12
+## [1.1.1] - 2026-04-13
 
 ### Added
 - **Notes in the main sidebar** — ButtonFu now supports Global and Workspace notes directly in the main sidebar, grouped alongside buttons and supporting plain-text or Markdown content, preview/open, copy, insert, send-to-Copilot, and edit actions

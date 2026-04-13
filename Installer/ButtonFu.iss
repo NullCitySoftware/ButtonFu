@@ -6,7 +6,9 @@
   #define MyAppVersion "1.1.2"
 #endif
 #define MyAppPublisher "NullCity"
-#define MyAppURL "https://github.com/buttonfu/buttonfu"
+#ifndef MyAppURL
+  #define MyAppURL "https://github.com/NullCitySoftware/buttonfu"
+#endif
 #ifndef MyVsixFileName
   #define MyVsixFileName "buttonfu-" + MyAppVersion + ".vsix"
 #endif

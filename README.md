@@ -22,6 +22,8 @@ For a live end-to-end check against a real Extension Development Host, run `npm 
 
 The repository-root `README.md`, `CHANGELOG.md`, `LICENSE`, and `README_PIC*.png` files are the source of truth. From the repository root, run `npm run sync-package-files --prefix buttonfu-extension` to refresh the package-local copies inside `buttonfu-extension` and hash-verify them before packaging.
 
+Installer builds also read their version and repository URL from `buttonfu-extension/package.json`, which keeps the shipped support/update links aligned with the extension metadata.
+
 ---
 
 ## What can a button do?
