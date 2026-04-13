@@ -195,6 +195,10 @@
       {
         "command": "buttonfu.dev.clearDriveNetSmokeData",
         "title": "ButtonFu: Dev Clear Drive.NET Smoke Data"
+      },
+      {
+        "command": "buttonfu.copyAgentBridgeInstructions",
+        "title": "ButtonFu: Copy Agent Bridge Instructions"
       }
     ],
     "menus": {

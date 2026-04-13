@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildApiSchema } from '../apiSchema';
+import { buildApiSchema, AUTOMATION_GUIDANCE } from '../apiSchema';
 
 test('buildApiSchema returns well-formed schema with correct version', () => {
     const schema = buildApiSchema('2.0.0');
@@ -66,4 +66,39 @@ test('buildApiSchema includes getBridgeContext and listBridges methods', () => {
     const methodNames = schema.methods.map(m => m.method);
     assert.ok(methodNames.includes('buttonfu.api.getBridgeContext'));
     assert.ok(methodNames.includes('buttonfu.api.listBridges'));
+});
+
+// ---------------------------------------------------------------------------
+// Automation guidance
+// ---------------------------------------------------------------------------
+
+test('buildApiSchema includes automationGuidance with required fields', () => {
+    const schema = buildApiSchema('1.0.0');
+    const g = schema.automationGuidance;
+    assert.ok(g, 'automationGuidance must be present');
+    assert.ok(g.preferredAutomationSurface.length > 0, 'preferredAutomationSurface must not be empty');
+    assert.ok(g.supportedMutationSurface.length > 0, 'supportedMutationSurface must not be empty');
+    assert.ok(Array.isArray(g.unsupportedAutomationMutationSurfaces), 'unsupportedAutomationMutationSurfaces must be an array');
+    assert.ok(g.unsupportedAutomationMutationSurfaces.length >= 4, 'at least 4 unsupported surfaces');
+    assert.ok(Array.isArray(g.automationWarnings), 'automationWarnings must be an array');
+    assert.ok(g.automationWarnings.length >= 1, 'at least 1 automation warning');
+});
+
+test('automationGuidance warns against direct storage edits', () => {
+    const g = AUTOMATION_GUIDANCE;
+    const allText = [
+        g.preferredAutomationSurface,
+        g.supportedMutationSurface,
+        ...g.unsupportedAutomationMutationSurfaces,
+        ...g.automationWarnings
+    ].join(' ').toLowerCase();
+
+    assert.ok(allText.includes('buttonfu.api.'), 'must reference buttonfu.api methods');
+    assert.ok(allText.includes('state.vscdb') || allText.includes('workspace storage'), 'must warn about workspace storage');
+    assert.ok(allText.includes('do not mutate') || allText.includes('do not write'), 'must include a do-not directive');
+});
+
+test('AUTOMATION_GUIDANCE matches schema.automationGuidance', () => {
+    const schema = buildApiSchema('1.0.0');
+    assert.deepStrictEqual(schema.automationGuidance, AUTOMATION_GUIDANCE);
 });

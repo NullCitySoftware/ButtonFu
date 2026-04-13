@@ -33,6 +33,13 @@ export interface ApiMethodSchema {
     example?: { params: unknown; result: unknown };
 }
 
+export interface AutomationGuidance {
+    preferredAutomationSurface: string;
+    supportedMutationSurface: string;
+    unsupportedAutomationMutationSurfaces: string[];
+    automationWarnings: string[];
+}
+
 export interface ApiSchemaRoot {
     name: string;
     version: string;
@@ -41,6 +48,7 @@ export interface ApiSchemaRoot {
     transport: string;
     description: string;
     authentication: string;
+    automationGuidance: AutomationGuidance;
     methods: ApiMethodSchema[];
     types: Record<string, ApiParamField[]>;
     errorCodes: Record<number, string>;
@@ -222,6 +230,29 @@ const methods: ApiMethodSchema[] = [
 // Full schema builder
 // ---------------------------------------------------------------------------
 
+export const AUTOMATION_GUIDANCE: AutomationGuidance = {
+    preferredAutomationSurface:
+        'ButtonFu Agent Bridge (named-pipe JSON-RPC 2.0) and the registered buttonfu.api.* VS Code commands.',
+    supportedMutationSurface:
+        'All button and note mutations MUST go through buttonfu.api.createButton, buttonfu.api.updateButton, ' +
+        'buttonfu.api.deleteButton, buttonfu.api.createNote, buttonfu.api.updateNote, and buttonfu.api.deleteNote — ' +
+        'either via the Agent Bridge named pipe or via vscode.commands.executeCommand() from a co-hosted extension.',
+    unsupportedAutomationMutationSurfaces: [
+        'VS Code workspace storage (state.vscdb / context.workspaceState)',
+        'The nullcity.buttonfu workspace memento',
+        'VS Code user/machine settings key buttonfu.globalButtons',
+        'VS Code user/machine settings key buttonfu.globalNotes',
+        'Direct file writes to any .vscdb or SQLite database',
+        'Any mechanism that bypasses the ButtonFu API command handlers'
+    ],
+    automationWarnings: [
+        'Do not mutate ButtonFu data by editing VS Code storage directly. ' +
+            'Direct writes bypass validation, provenance tracking, UI refresh, and may corrupt or lose data.',
+        'The internal storage format is not a stable API and may change between versions without notice.',
+        'Always use the ButtonFu Agent Bridge or buttonfu.api.* commands for automation.'
+    ]
+};
+
 export function buildApiSchema(extensionVersion: string): ApiSchemaRoot {
     return {
         name: AGENT_BRIDGE_NAME,
@@ -240,6 +271,7 @@ export function buildApiSchema(extensionVersion: string): ApiSchemaRoot {
             'Include "auth": "<token>" in every JSON-RPC request object. ' +
             'The token is a 256-bit hex string from the bridge discovery file. ' +
             'Failed authentication returns error code -32000.',
+        automationGuidance: AUTOMATION_GUIDANCE,
         methods,
         types: {
             ButtonConfig: buttonFields,

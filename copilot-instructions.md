@@ -97,6 +97,43 @@ Multiple fallback command variants are tried for each step to ensure compatibili
 
 ButtonFu exposes a **named-pipe JSON-RPC 2.0 bridge** that external agents can use to create, read, update, and delete buttons and notes programmatically.
 
+### ⚠️ Hard rule for automation
+
+> **All button and note mutations MUST go through the ButtonFu Agent Bridge or the registered `buttonfu.api.*` VS Code commands.**
+>
+> **Do NOT mutate ButtonFu data by editing VS Code storage directly.** This includes:
+> - VS Code workspace storage (`state.vscdb` / `context.workspaceState`)
+> - The `nullcity.buttonfu` workspace memento
+> - VS Code user/machine settings keys `buttonfu.globalButtons` and `buttonfu.globalNotes`
+> - Direct file writes to any `.vscdb` or SQLite database
+> - Any mechanism that bypasses the ButtonFu API command handlers
+>
+> Direct writes bypass validation, provenance tracking, UI refresh, and may corrupt or silently lose data. The internal storage format is not a stable API and may change between versions without notice.
+
+### Helper CLI
+
+The repo includes ready-to-use helper scripts for bridge communication in `buttonfu-extension/scripts/`:
+
+```powershell
+# PowerShell — list all buttons
+.\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method listButtons
+
+# PowerShell — create a button
+.\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method createButton -Params '{"name":"Run Tests","locality":"Global","type":"TerminalCommand","executionText":"npm test"}'
+```
+
+```bash
+# Node.js — list all buttons
+node buttonfu-extension/scripts/buttonfu-bridge.js listButtons
+
+# Node.js — create a button
+node buttonfu-extension/scripts/buttonfu-bridge.js createButton '{"name":"Run Tests","locality":"Global","type":"TerminalCommand","executionText":"npm test"}'
+```
+
+### In-product help command
+
+Run **ButtonFu: Copy Agent Bridge Instructions** from the Command Palette (`buttonfu.copyAgentBridgeInstructions`) to copy the current bridge status, connection details, automation rules, and a ready-to-use example to the clipboard.
+
 ### Enabling the bridge
 
 Set `buttonfu.enableAgentBridge` to `true` in VS Code settings. When enabled, the extension starts a named-pipe server and writes a discovery file.
