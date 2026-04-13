@@ -499,6 +499,40 @@ test('non-string method returns invalid-request error', async () => {
     }
 });
 
+test('oversized messages are rejected before command execution', async () => {
+    const exec = createFakeExecuteCommand({ success: true });
+    const bridge = new AgentBridge(exec, createTestLogger());
+    await bridge.start();
+
+    try {
+        const info = readBridgeInfo();
+        const client = await connectToBridge(info.pipeName);
+        const closed = new Promise<void>((resolve) => {
+            client.socket.once('close', () => resolve());
+        });
+
+        client.socket.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'too-large',
+            method: 'buttonfu.api.listButtons',
+            auth: info.authToken,
+            params: {
+                payload: 'x'.repeat(1_048_600)
+            }
+        }) + '\n');
+
+        const raw = await client.readLine();
+        const response = JSON.parse(raw);
+        assert.equal(response.id, null);
+        assert.equal(response.error?.code, -32002);
+        assert.equal(exec.calls.length, 0);
+
+        await closed;
+    } finally {
+        await bridge.stop();
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Rate limiting
 // ---------------------------------------------------------------------------
@@ -532,6 +566,7 @@ test('requests beyond rate limit are rejected', async () => {
         // First 60 should succeed, 61st should be rate-limited
         const rateLimited = responses.filter((r) => r.error?.code === -32001);
         assert.ok(rateLimited.length >= 1, 'At least one request should be rate-limited');
+        assert.equal(rateLimited[0]?.id, 260);
 
         const succeeded = responses.filter((r) => !r.error);
         assert.equal(succeeded.length, 60);

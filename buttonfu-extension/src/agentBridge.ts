@@ -569,7 +569,7 @@ export class AgentBridge {
             }
             if (timestamps.length >= RATE_MAX_REQUESTS) {
                 if (!isNotification) {
-                    this.sendError(socket, null, RATE_LIMITED_ERROR, 'Rate limit exceeded. Try again later.');
+                    this.sendError(socket, getJsonRpcErrorId(request), RATE_LIMITED_ERROR, 'Rate limit exceeded. Try again later.');
                 }
                 return;
             }
