@@ -81,8 +81,12 @@ function Find-BridgeFile {
         throw "Bridge directory not found: $dir. Is buttonfu.enableAgentBridge set to true?"
     }
 
-    $files = Get-ChildItem -Path $dir -Filter 'bridge-*.json' -File |
-        Sort-Object LastWriteTime -Descending
+    # Ensure this is always an array. With a single file, PowerShell can return
+    # a scalar FileInfo object that does not expose a Count property.
+    $files = @(
+        Get-ChildItem -Path $dir -Filter 'bridge-*.json' -File |
+            Sort-Object LastWriteTime -Descending
+    )
 
     if ($files.Count -eq 0) {
         throw "No bridge files found in $dir. Enable the Agent Bridge in ButtonFu settings."
@@ -91,6 +95,10 @@ function Find-BridgeFile {
     foreach ($f in $files) {
         try {
             $info = Get-Content $f.FullName -Raw | ConvertFrom-Json
+            if (-not $info.pid) {
+                continue
+            }
+
             $proc = Get-Process -Id $info.pid -ErrorAction SilentlyContinue
             if ($proc) { return $f.FullName }
         } catch { }
