@@ -195,6 +195,25 @@ export class ButtonStore {
         return false;
     }
 
+    /** Update only the sortOrder of a button by ID. */
+    async setSortOrder(id: string, sortOrder: number): Promise<void> {
+        const globals = this.getGlobalButtons();
+        const globalIdx = globals.findIndex(b => b.id === id);
+        if (globalIdx >= 0) {
+            globals[globalIdx].sortOrder = sortOrder;
+            await this.saveGlobalButtons(globals, false);
+            this._onDidChange.fire();
+            return;
+        }
+        const locals = this.getLocalButtons();
+        const localIdx = locals.findIndex(b => b.id === id);
+        if (localIdx >= 0) {
+            locals[localIdx].sortOrder = sortOrder;
+            await this.saveLocalButtons(locals, false);
+            this._onDidChange.fire();
+        }
+    }
+
     /** Replace all global buttons */
     async saveGlobalButtons(buttons: ButtonConfig[], emitChange = true): Promise<void> {
         const config = vscode.workspace.getConfiguration('buttonfu');

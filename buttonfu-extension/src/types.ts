@@ -192,7 +192,7 @@ export interface NoteConfig {
     format: NoteContentFormat;
     /** Default action for the main split-button click */
     defaultAction: NoteDefaultAction;
-    /** Whether prompt actions should resolve tokens before execution */
+    /** @deprecated No longer used — token resolution is automatic. Kept for migration only. */
     promptEnabled?: boolean;
     /** For Copilot prompt actions: which model to use */
     copilotModel: string;
@@ -321,7 +321,7 @@ export function createDefaultNote(locality: ButtonLocality = 'Global'): NoteConf
         content: '',
         format: 'PlainText',
         defaultAction: 'open',
-        promptEnabled: false,
+        promptEnabled: undefined,
         copilotModel: '',
         copilotMode: 'agent',
         copilotAttachFiles: [],

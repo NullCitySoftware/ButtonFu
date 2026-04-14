@@ -407,7 +407,8 @@ function saveButton() {
         copilotAttachFiles: currentAttachFiles.slice(),
         copilotAttachActiveFile: document.getElementById('btn-copilotAttachActiveFile').checked,
         warnBeforeExecution: document.getElementById('btn-warnBeforeExecution').checked,
-        userTokens: currentUserTokens.map(t => Object.assign({}, t))
+        userTokens: currentUserTokens.map(t => Object.assign({}, t)),
+        sortOrder: currentButton ? currentButton.sortOrder : undefined
     };
 
     if (!btn.name) {

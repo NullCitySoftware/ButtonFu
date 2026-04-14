@@ -707,13 +707,6 @@ ${noteColourFieldMarkup}
                             <label for="noteCopilotModel">Copilot Model</label>
 ${noteModelAutocompleteMarkup}
                         </div>
-                        <div class="field full setting-row">
-                            <div class="setting-row-copy">
-                                <div class="setting-row-title">Enable token resolution</div>
-                                <div class="setting-row-desc">Resolve ButtonFu tokens before Copy, Insert, and Send to Copilot.</div>
-                            </div>
-                            <input type="checkbox" class="setting-checkbox" id="notePromptEnabled" />
-                        </div>
                         <div class="field full">
                             <label for="noteContent">Content</label>
                             <textarea id="noteContent" rows="12" placeholder="Write the note content here"></textarea>
@@ -1031,7 +1024,6 @@ ${sharedControlScript}
                 content: document.getElementById('noteContent').value,
                 format: document.getElementById('noteFormat').value,
                 defaultAction: document.getElementById('noteDefaultAction').value,
-                promptEnabled: document.getElementById('notePromptEnabled').checked,
                 copilotModel: document.getElementById('noteCopilotModel').value.trim(),
                 copilotMode: document.getElementById('noteCopilotMode').value,
                 copilotAttachFiles: document.getElementById('noteAttachFiles').value.split(/\\r?\\n/).map(line => line.trim()).filter(Boolean),
@@ -1068,7 +1060,6 @@ ${sharedControlScript}
             colourField.setValue(workingNote.colour || '');
             document.getElementById('noteFormat').value = workingNote.format || 'PlainText';
             document.getElementById('noteDefaultAction').value = workingNote.defaultAction || 'open';
-            document.getElementById('notePromptEnabled').checked = !!workingNote.promptEnabled;
             document.getElementById('noteCopilotModel').value = workingNote.copilotModel || '';
             document.getElementById('noteCopilotMode').value = workingNote.copilotMode || 'agent';
             document.getElementById('noteAttachFiles').value = (workingNote.copilotAttachFiles || []).join('\\n');

@@ -89,6 +89,47 @@ export class NoteActionService {
             return;
         }
 
+        await this.resolveAndPreview(note);
+    }
+
+    /** Resolve tokens, prompt the user for any unresolved ones, then open a preview. */
+    private async resolveAndPreview(note: NoteConfig): Promise<void> {
+        const aliases = this.getPromptAliases(note);
+        const systemSnap = this.promptActions.captureSystemTokens(aliases);
+        await this.promptActions.captureClipboard(systemSnap);
+
+        const unresolved = this.promptActions.getUnresolvedUserTokens(note.content, note.userTokens || [], systemSnap);
+        if (unresolved.length === 0) {
+            const resolvedText = this.promptActions.resolveText(note.content, systemSnap, {}, note.userTokens || []);
+            this.previewProvider.setResolvedContent(note.id, resolvedText);
+            await this.openPreview(note);
+            return;
+        }
+
+        const resolvedUser = this.promptActions.getResolvedUserTokens(note.content, note.userTokens || [], systemSnap);
+        const usedSystem = this.promptActions.getUsedSystemTokens(note.content, systemSnap, aliases);
+        new PromptTokenInputPanel({
+            title: note.name,
+            subtitle: `Preview · ${note.locality === 'Global' ? 'Global' : 'Workspace'} note`,
+            description: 'Provide values for the prompt tokens used by this note.',
+            icon: note.icon || getDefaultNoteIcon(),
+            previewLabel: note.format === 'Markdown' ? 'Markdown Note' : 'Note Content',
+            previewText: note.content,
+            executeLabel: 'Open Preview',
+            unresolvedTokens: unresolved,
+            resolvedUserTokens: resolvedUser,
+            usedSystemTokens: usedSystem,
+            extensionUri: this.extensionUri,
+            onExecute: async (userValues: TokenSnapshot) => {
+                const resolvedText = this.promptActions.resolveText(note.content, systemSnap, userValues, note.userTokens || []);
+                this.previewProvider.setResolvedContent(note.id, resolvedText);
+                await this.openPreview(note);
+            }
+        });
+    }
+
+    /** Open the note preview document/markdown rendering. */
+    private async openPreview(note: NoteConfig): Promise<void> {
         const uri = this.previewProvider.getUri(note);
         if (note.format === 'Markdown') {
             try {
@@ -103,7 +144,7 @@ export class NoteActionService {
         await vscode.window.showTextDocument(document, {
             preview: true,
             preserveFocus: false,
-            viewColumn: vscode.ViewColumn.Beside
+            viewColumn: vscode.ViewColumn.One
         });
     }
 
@@ -188,10 +229,7 @@ export class NoteActionService {
             }
         };
 
-        if (!note.promptEnabled) {
-            await applyText(note.content);
-            return;
-        }
+        // Always attempt token resolution — no-op if there are no tokens in the content.
 
         const aliases = this.getPromptAliases(note);
         const systemSnap = this.promptActions.captureSystemTokens(aliases);

@@ -8,8 +8,10 @@ import {
     ButtonConfig,
     ButtonLocality,
     COPILOT_MODES,
+    NOTE_DEFAULT_ACTIONS,
     NoteConfig,
     SYSTEM_TOKENS,
+    createDefaultNote,
     getDefaultNoteIcon
 } from './types';
 import { ButtonStore } from './buttonStore';
@@ -161,6 +163,32 @@ export class ButtonEditorPanel {
         }
     }
 
+    /** Open the editor and immediately start editing a specific note */
+    public static createOrShowWithNote(store: ButtonStore, extensionUri: vscode.Uri, noteId: string, noteStore?: NoteStore): void {
+        ButtonEditorPanel.createOrShow(store, extensionUri, noteStore);
+        if (ButtonEditorPanel.currentPanel) {
+            setTimeout(() => {
+                ButtonEditorPanel.currentPanel?.panel.webview.postMessage({
+                    type: 'editNoteNode',
+                    note: noteStore?.getNode(noteId)
+                });
+            }, 300);
+        }
+    }
+
+    /** Open the editor and immediately launch the new-note form */
+    public static createOrShowWithNewNote(store: ButtonStore, extensionUri: vscode.Uri, locality: ButtonLocality = 'Global', noteStore?: NoteStore): void {
+        ButtonEditorPanel.createOrShow(store, extensionUri, noteStore);
+        if (ButtonEditorPanel.currentPanel) {
+            setTimeout(() => {
+                ButtonEditorPanel.currentPanel?.panel.webview.postMessage({
+                    type: 'addNoteNode',
+                    locality
+                });
+            }, 300);
+        }
+    }
+
     private dispose(): void {
         ButtonEditorPanel.currentPanel = undefined;
         while (this.disposables.length) {
@@ -298,7 +326,8 @@ export class ButtonEditorPanel {
                         }
                         return u.fsPath;
                     });
-                    this.panel.webview.postMessage({ type: 'filesResult', files: paths });
+                    const resultType = message.target === 'note' ? 'noteFilesResult' : 'filesResult';
+                    this.panel.webview.postMessage({ type: resultType, files: paths });
                 }
                 break;
             }
@@ -342,9 +371,73 @@ export class ButtonEditorPanel {
                 await this.store.reorderButton(message.id as string, message.direction as 'up' | 'down');
                 break;
             }
+            case 'reorderItems': {
+                const updates = message.updates;
+                if (!Array.isArray(updates)) { break; }
+                for (const update of updates) {
+                    if (typeof update.id !== 'string' || typeof update.sortOrder !== 'number') { continue; }
+                    if (update.kind === 'button') {
+                        await this.store.setSortOrder(update.id, update.sortOrder);
+                    } else if (update.kind === 'note' && this.noteStore) {
+                        await this.noteStore.setSortOrder(update.id, update.sortOrder);
+                    }
+                }
+                break;
+            }
             case 'editNoteNode': {
-                if (typeof message.id === 'string' && message.id) {
-                    await vscode.commands.executeCommand('buttonfu.editNoteNode', message.id);
+                if (typeof message.id === 'string' && message.id && this.noteStore) {
+                    const note = this.noteStore.getNode(message.id);
+                    if (note) {
+                        this.panel.webview.postMessage({ type: 'editNoteNode', note });
+                    }
+                }
+                break;
+            }
+            case 'addNoteNode': {
+                const locality = message.locality === 'Local' ? 'Local' : 'Global';
+                this.panel.webview.postMessage({ type: 'addNoteNode', locality });
+                break;
+            }
+            case 'saveNote': {
+                if (!this.noteStore) { break; }
+                const note = message.note;
+                if (!note || typeof note !== 'object'
+                    || typeof note.name !== 'string' || !note.name
+                    || typeof note.locality !== 'string'
+                    || !['Global', 'Local'].includes(note.locality)
+                ) {
+                    console.warn('ButtonFu: saveNote rejected — invalid note data from webview');
+                    break;
+                }
+                const MAX_LEN = 100_000;
+                if ((note.name as string).length > 500
+                    || ((note.content ?? '') as string).length > MAX_LEN
+                    || ((note.category ?? '') as string).length > 200
+                ) {
+                    console.warn('ButtonFu: saveNote rejected — field length exceeded');
+                    break;
+                }
+                try {
+                    const saved = await this.noteStore.saveNode(note as NoteConfig);
+                    this.panel.webview.postMessage({ type: 'noteSaved', note: saved });
+                } catch (error) {
+                    const msg = error instanceof Error ? error.message : 'Failed to save the note.';
+                    void vscode.window.showErrorMessage(msg);
+                }
+                break;
+            }
+            case 'deleteNote': {
+                if (!this.noteStore) { break; }
+                const noteToDelete = this.noteStore.getNode(message.id as string);
+                const noteName = noteToDelete?.name || 'this note';
+                const answer = await vscode.window.showWarningMessage(
+                    `Delete "${noteName}"? This cannot be undone.`,
+                    { modal: true },
+                    'Delete'
+                );
+                if (answer === 'Delete') {
+                    await this.noteStore.deleteNode(message.id as string);
+                    this.panel.webview.postMessage({ type: 'closeNoteEditorOverlay' });
                 }
                 break;
             }
@@ -461,6 +554,31 @@ export class ButtonEditorPanel {
             alphaId: 'btn-colour-alpha',
             placeholder: '#ffffff or theme token'
         });
+        const noteIconPickerMarkup = renderIconPickerMarkup({
+            triggerId: 'noteIconTrigger',
+            previewId: 'noteIconPreview',
+            labelId: 'noteIconLabel',
+            inputId: 'note-icon',
+            dropdownId: 'noteIconDropdown',
+            searchId: 'noteIconSearch',
+            gridId: 'noteIconGrid',
+            defaultLabel: 'Select icon...'
+        });
+        const noteModelAutocompleteMarkup = renderModelAutocompleteMarkup({
+            inputId: 'note-copilotModel',
+            listId: 'noteModelAutocomplete',
+            triggerId: 'noteModelAutocompleteTrigger',
+            placeholder: 'auto'
+        });
+        const noteColourFieldMarkup = renderColourFieldMarkup({
+            wrapperId: 'noteColourField',
+            pickerId: 'note-colour-picker',
+            inputId: 'note-colour',
+            alphaId: 'note-colour-alpha',
+            placeholder: '#ffffff or theme token'
+        });
+        const defaultActionsJson = JSON.stringify(NOTE_DEFAULT_ACTIONS);
+        const defaultNoteJson = JSON.stringify(createDefaultNote());
         const buildInfoStr = getBuildInfoString();
         const renderStamp = `EDITOR ${buildInfo.version} #${buildInfo.buildNumber} ${buildInfo.buildTime}`;
         const showBuildInfo = ButtonEditorPanel._globalState?.get<boolean>('options.showBuildInformation', false) ?? false;
@@ -1312,6 +1430,118 @@ ${autocompleteStyles}
             align-items: center;
             gap: 8px;
         }
+
+        /* ─── Note Editor Overlay ─── */
+        .note-editor-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: var(--vscode-editor-background);
+            z-index: 100;
+            overflow-y: auto;
+        }
+        .note-editor-overlay.visible { display: block; }
+        .ne-body {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .ne-layout {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px 16px;
+        }
+        .ne-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ne-field.full { grid-column: 1 / -1; }
+        .ne-field label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .ne-field input[type="text"],
+        .ne-field select,
+        .ne-field textarea {
+            width: 100%;
+            padding: 8px 10px;
+            font: inherit;
+            color: var(--vscode-input-foreground);
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+        }
+        .ne-field textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: var(--vscode-editor-font-family), monospace;
+        }
+        .ne-section {
+            margin-top: 18px;
+            padding-top: 18px;
+            border-top: 1px solid var(--vscode-panel-border);
+        }
+        .ne-editor-body {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .ne-editor-col-left {
+            flex: 1 1 400px;
+            min-width: 320px;
+        }
+        .ne-editor-col-right {
+            flex: 1 1 340px;
+            min-width: 300px;
+        }
+        .ne-setting-row {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 12px 14px;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            background: var(--vscode-input-background);
+        }
+        .ne-setting-row .toggle-switch {
+            margin-top: 2px;
+        }
+        .ne-setting-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .ne-setting-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+        .ne-setting-desc {
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--vscode-descriptionForeground);
+        }
+        .ne-field-help {
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--vscode-descriptionForeground);
+        }
+        .ne-field-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        @media (max-width: 900px) {
+            .ne-layout { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -1346,9 +1576,14 @@ ${autocompleteStyles}
             <div class="section active" id="section-global">
                 <div class="button-list-header">
                     <h2 id="globalSectionTitle">Global Buttons</h2>
-                    <button class="btn btn-primary" id="addGlobalBtn">
-                        <span class="codicon codicon-add"></span> Add Button
-                    </button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" id="addGlobalNoteBtn">
+                            <span class="codicon codicon-add"></span> Add Note
+                        </button>
+                        <button class="btn btn-primary" id="addGlobalBtn">
+                            <span class="codicon codicon-add"></span> Add Button
+                        </button>
+                    </div>
                 </div>
                 <div id="globalButtonList"></div>
             </div>
@@ -1356,9 +1591,14 @@ ${autocompleteStyles}
             <div class="section" id="section-local">
                 <div class="button-list-header">
                     <h2 id="workspaceSectionTitle">Workspace Buttons</h2>
-                    <button class="btn btn-primary" id="addLocalBtn">
-                        <span class="codicon codicon-add"></span> Add Button
-                    </button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" id="addLocalNoteBtn">
+                            <span class="codicon codicon-add"></span> Add Note
+                        </button>
+                        <button class="btn btn-primary" id="addLocalBtn">
+                            <span class="codicon codicon-add"></span> Add Button
+                        </button>
+                    </div>
                 </div>
                 <div id="localButtonList"></div>
             </div>
@@ -1684,6 +1924,200 @@ ${modelAutocompleteMarkup}
         </div>
     </div>
 
+    <!-- Note editor overlay -->
+    <div class="note-editor-overlay" id="noteEditorOverlay">
+        <div class="editor-header">
+            <h2>
+                <span class="codicon codicon-edit"></span>
+                <span id="noteEditorTitle">Create Note</span>
+            </h2>
+            <div class="actions">
+                <button type="button" class="btn btn-danger" id="noteDeleteBtn">
+                    <span class="codicon codicon-trash"></span> Delete
+                </button>
+                <button type="button" class="btn btn-primary" id="noteSaveBtn">
+                    <span class="codicon codicon-save"></span> Save
+                </button>
+                <button type="button" class="btn btn-secondary" id="noteCancelBtn">
+                    <span class="codicon codicon-chrome-close"></span> Cancel
+                </button>
+            </div>
+        </div>
+        <div class="ne-body">
+            <div class="ne-layout">
+                <div class="ne-field">
+                    <label for="note-name">Name</label>
+                    <input type="text" id="note-name" placeholder="Enter a name" />
+                    <span class="field-error" id="note-name-error"></span>
+                </div>
+                <div class="ne-field">
+                    <label for="note-category">Category</label>
+                    <input type="text" id="note-category" placeholder="General" />
+                </div>
+                <div class="ne-field">
+                    <label for="note-locality">Scope</label>
+                    <select id="note-locality"></select>
+                </div>
+                <div class="ne-field">
+                    <label for="note-defaultAction">Default Click Action</label>
+                    <select id="note-defaultAction"></select>
+                    <div class="ne-field-help">The main split-button click in the sidebar uses this action.</div>
+                </div>
+                <div class="ne-field" style="position:relative">
+                    <label for="note-icon">Icon</label>
+${noteIconPickerMarkup}
+                </div>
+                <div class="ne-field">
+                    <label for="note-colour">Colour</label>
+${noteColourFieldMarkup}
+                </div>
+                <div class="ne-field full">
+                    <label>Provenance</label>
+                    <div class="provenance-grid">
+                        <div class="provenance-item">
+                            <span class="provenance-item-label">Source Summary</span>
+                            <div class="provenance-item-value" id="note-source-summary">User</div>
+                        </div>
+                        <div class="provenance-item">
+                            <span class="provenance-item-label">Created By</span>
+                            <div class="provenance-item-value" id="note-created-by">User</div>
+                        </div>
+                        <div class="provenance-item">
+                            <span class="provenance-item-label">Last Modified By</span>
+                            <div class="provenance-item-value" id="note-last-modified-by">User</div>
+                        </div>
+                    </div>
+                    <div class="ne-field-help" id="note-provenance-help">ButtonFu fills these values automatically based on whether the change came from the editor or the ButtonFu API.</div>
+                </div>
+            </div>
+
+            <div class="ne-section">
+                <div class="ne-editor-body">
+                    <div class="ne-editor-col-left">
+                <div class="ne-layout">
+                    <div class="ne-field">
+                        <label for="note-format">Format</label>
+                        <select id="note-format">
+                            <option value="PlainText">Plain Text</option>
+                            <option value="Markdown">Markdown</option>
+                        </select>
+                    </div>
+                    <div class="ne-field">
+                        <label for="note-copilotModel">Copilot Model</label>
+${noteModelAutocompleteMarkup}
+                    </div>
+                    <div class="ne-field">
+                        <label for="note-copilotMode">Copilot Mode</label>
+                        <select id="note-copilotMode"></select>
+                    </div>
+                    <div class="ne-field"></div>
+
+                    <div class="ne-field full">
+                        <label for="note-content">Content</label>
+                        <textarea id="note-content" rows="12" placeholder="Write the note content here"></textarea>
+                    </div>
+
+                    <div class="ne-setting-row">
+                        <label class="toggle-switch" style="margin:0">
+                            <input type="checkbox" id="note-attachActiveFile" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <div class="ne-setting-copy">
+                            <div class="ne-setting-title">Attach active editor file</div>
+                            <div class="ne-setting-desc">Include the current editor file automatically when sending this note to Copilot.</div>
+                        </div>
+                    </div>
+
+                    <div class="ne-field full">
+                        <label>Attach Files</label>
+                        <div class="attach-files-row">
+                            <button class="btn btn-secondary btn-sm" id="notePickFilesBtn">
+                                <span class="codicon codicon-add"></span> Browse...
+                            </button>
+                            <div class="autocomplete-container">
+                                <input type="text" id="noteWorkspaceFileSearch" placeholder="Search workspace files..." />
+                                <div class="autocomplete-list" id="noteWorkspaceFileList"></div>
+                            </div>
+                        </div>
+                        <div class="file-chips" id="noteFileChips"></div>
+                        <div class="ne-field-help">Browse for files or search workspace files to attach to the Copilot chat context</div>
+                    </div>
+                </div>
+                    </div>
+
+                    <div class="ne-editor-col-right">
+                        <div class="tokens-panel">
+                            <h3><span class="codicon codicon-symbol-variable"></span> Tokens</h3>
+                            <p style="font-size:11px;color:var(--vscode-descriptionForeground);margin-bottom:10px;line-height:1.4">
+                                Use <code style="background:var(--vscode-badge-background);padding:1px 4px;border-radius:3px">$TokenName$</code> in your note content. System tokens are resolved automatically. User tokens can have default values or request input at action time.
+                            </p>
+
+                            <div class="token-table-wrap" id="noteTokenTableWrap">
+                                <table class="token-table" id="noteTokenTable">
+                                    <thead><tr><th>Token</th><th>Value</th><th>DataType</th></tr></thead>
+                                    <tbody id="noteTokenTableBody"></tbody>
+                                </table>
+                            </div>
+
+                            <button class="btn btn-secondary btn-sm" id="noteAddUserTokenBtn" style="margin-bottom:8px;">
+                                <span class="codicon codicon-add"></span> Add User Token
+                            </button>
+
+                            <div class="user-token-form" id="noteUserTokenForm" style="display:none">
+                                <h4><span class="codicon codicon-edit"></span> <span id="noteUtFormTitle">New User Token</span></h4>
+                                <div class="ut-form-row">
+                                    <div class="ut-field" style="flex:1">
+                                        <label>Token Name</label>
+                                        <input type="text" id="noteTokenName" placeholder="$MyToken$" />
+                                        <div id="noteTokenNameError" style="display:none;color:#c72e2e;font-size:11px;margin-top:3px"></div>
+                                    </div>
+                                    <div class="ut-field" style="flex:1">
+                                        <label>DataType</label>
+                                        <select id="noteTokenType">
+                                            <option value="String">String</option>
+                                            <option value="MultiLineString">Multi-Line String</option>
+                                            <option value="Integer">Integer</option>
+                                            <option value="Boolean">Boolean</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="ut-form-row">
+                                    <div class="ut-field">
+                                        <label>Display Label</label>
+                                        <input type="text" id="noteTokenLabel" placeholder="My Token" />
+                                    </div>
+                                </div>
+                                <div class="ut-form-row">
+                                    <div class="ut-field">
+                                        <label>Description</label>
+                                        <textarea id="noteTokenDescription" placeholder="Describe what this token is for..." rows="2"></textarea>
+                                    </div>
+                                </div>
+                                <div class="ut-form-row">
+                                    <div class="ut-field">
+                                        <label>Default Value <span style="font-weight:400;text-transform:none">(leave empty for user-requested at runtime)</span></label>
+                                        <input type="text" id="noteTokenDefault" placeholder="Leave empty to request at runtime" />
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                                    <label class="toggle-switch" style="margin:0">
+                                        <input type="checkbox" id="noteTokenRequired" />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <label for="noteTokenRequired" style="margin:0;cursor:pointer;font-size:12px">Required</label>
+                                </div>
+                                <div class="user-token-actions">
+                                    <button class="btn btn-primary btn-sm" id="noteSaveTokenBtn"><span class="codicon codicon-check"></span> Save Token</button>
+                                    <button class="btn btn-secondary btn-sm" id="noteCancelTokenBtn"><span class="codicon codicon-chrome-close"></span> Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         const ICONS = ${iconsJson};
@@ -1738,6 +2172,42 @@ ${sharedControlScript}
         });
         modelAutocomplete.prefetch();
 
+        // ─── Note editor state ───
+        const NOTE_DEFAULT_ACTIONS = ${defaultActionsJson};
+        const DEFAULT_NOTE = ${defaultNoteJson};
+        let currentNote = null;
+        let isNewNote = false;
+        let noteUserTokens = [];
+        let noteEditingTokenIndex = -1;
+        const noteIconPicker = createButtonFuIconPicker({
+            icons: ICONS,
+            triggerId: 'noteIconTrigger',
+            previewId: 'noteIconPreview',
+            labelId: 'noteIconLabel',
+            inputId: 'note-icon',
+            dropdownId: 'noteIconDropdown',
+            searchId: 'noteIconSearch',
+            gridId: 'noteIconGrid',
+            defaultLabel: 'Select icon...'
+        });
+        const noteModelAutocomplete = createButtonFuModelAutocomplete({
+            inputId: 'note-copilotModel',
+            listId: 'noteModelAutocomplete',
+            triggerId: 'noteModelAutocompleteTrigger',
+            requestModels: () => {
+                if (!cachedModels) {
+                    vscode.postMessage({ type: 'getModels' });
+                }
+            }
+        });
+        const noteColourField = createButtonFuColourField({
+            wrapperId: 'noteColourField',
+            inputId: 'note-colour',
+            pickerId: 'note-colour-picker',
+            alphaId: 'note-colour-alpha'
+        });
+        noteModelAutocomplete.prefetch();
+
         function getExecutionInput() {
             const type = document.getElementById('btn-type').value;
             return (type === 'TaskExecution' || type === 'PaletteAction')
@@ -1791,6 +2261,7 @@ ${sharedControlScript}
                 case 'modelsResult':
                     cachedModels = msg.models;
                     modelAutocomplete.setModels(msg.models || []);
+                    noteModelAutocomplete.setModels(msg.models || []);
                     break;
                 case 'filesResult':
                     if (msg.files) {
@@ -1798,10 +2269,42 @@ ${sharedControlScript}
                         renderFileChips();
                     }
                     break;
+                case 'noteFilesResult':
+                    if (msg.files) {
+                        msg.files.forEach(f => {
+                            if (!noteAttachFiles.includes(f)) { noteAttachFiles.push(f); }
+                        });
+                        renderNoteFileChips();
+                    }
+                    break;
                 case 'workspaceFilesResult':
                     cachedWorkspaceFiles = msg.files || [];
                     renderWorkspaceFileList(cachedWorkspaceFiles, document.getElementById('workspaceFileSearch').value);
+                    if (pendingNoteFileSearch) {
+                        pendingNoteFileSearch = false;
+                        renderNoteWorkspaceFileList(cachedWorkspaceFiles, document.getElementById('noteWorkspaceFileSearch').value);
+                    }
                     break;
+                case 'editNoteNode':
+                    if (msg.note) {
+                        isNewNote = false;
+                        openNoteEditor(msg.note);
+                    }
+                    break;
+                case 'addNoteNode':
+                    addNote(msg.locality === 'Local' ? 'Local' : 'Global');
+                    break;
+                case 'noteSaved':
+                    closeNoteEditor();
+                    break;
+                case 'closeNoteEditorOverlay':
+                    closeNoteEditor();
+                    break;
+                case 'switchTab': {
+                    const targetTab = document.querySelector('[data-tab="' + msg.tab + '"]');
+                    if (targetTab) { targetTab.click(); }
+                    break;
+                }
             }
         });
 
@@ -1902,14 +2405,8 @@ ${sharedControlScript}
 
         function renderCards(items) {
             const moveStateById = {};
-            const buttonIds = items.filter(item => item.kind === 'button').map(item => item.id);
-            const noteIds = items.filter(item => item.kind === 'note').map(item => item.id);
-
-            buttonIds.forEach((id, index) => {
-                moveStateById[id] = { isFirst: index === 0, isLast: index === buttonIds.length - 1 };
-            });
-            noteIds.forEach((id, index) => {
-                moveStateById[id] = { isFirst: index === 0, isLast: index === noteIds.length - 1 };
+            items.forEach((item, index) => {
+                moveStateById[item.id] = { isFirst: index === 0, isLast: index === items.length - 1 };
             });
 
             const cats = {};
@@ -2268,7 +2765,8 @@ ${sharedControlScript}
                 copilotAttachFiles: currentAttachFiles.slice(),
                 copilotAttachActiveFile: document.getElementById('btn-copilotAttachActiveFile').checked,
                 warnBeforeExecution: document.getElementById('btn-warnBeforeExecution').checked,
-                userTokens: currentUserTokens.map(t => Object.assign({}, t))
+                userTokens: currentUserTokens.map(t => Object.assign({}, t)),
+                sortOrder: currentButton ? currentButton.sortOrder : undefined
             };
 
             if (!btn.name) {
@@ -2297,7 +2795,11 @@ ${sharedControlScript}
         }
 
         function editNote(id) {
-            vscode.postMessage({ type: 'editNoteNode', id: id });
+            const note = getNote(id);
+            if (note) {
+                isNewNote = false;
+                openNoteEditor(note);
+            }
         }
 
         function duplicateButton(id) {
@@ -2325,47 +2827,52 @@ ${sharedControlScript}
         }
 
         function reorderButtonLocal(id, direction) {
-            const btn = getButton(id);
-            if (!btn) return;
-            const group = allButtons.filter(b => b.locality === btn.locality)
-                .sort((a, b) => (a.sortOrder ?? 99999) - (b.sortOrder ?? 99999));
-            const idx = group.findIndex(b => b.id === id);
-            const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-            if (swapIdx < 0 || swapIdx >= group.length) { return; }
-            // Ensure sortOrders are numeric
-            group.forEach((b, i) => { if (b.sortOrder === undefined) { b.sortOrder = i * 10; } });
-            const tmp = group[idx].sortOrder;
-            group[idx].sortOrder = group[swapIdx].sortOrder;
-            group[swapIdx].sortOrder = tmp;
-            // Propagate back to allButtons
-            group.forEach(b => {
-                const ab = allButtons.find(x => x.id === b.id);
-                if (ab) { ab.sortOrder = b.sortOrder; }
-            });
-            renderButtonLists();
-            flashMovedCard('[data-button-id="' + id + '"]');
-            vscode.postMessage({ type: 'reorderButton', id, direction });
+            reorderItemLocal(id, 'button', direction);
         }
 
         function reorderNoteLocal(id, direction) {
-            const note = getNote(id);
-            if (!note) return;
-            const group = allNotes.filter(n => n.locality === note.locality)
-                .sort((a, b) => (a.sortOrder ?? 99999) - (b.sortOrder ?? 99999));
-            const idx = group.findIndex(n => n.id === id);
+            reorderItemLocal(id, 'note', direction);
+        }
+
+        function reorderItemLocal(id, kind, direction) {
+            const target = kind === 'note' ? getNote(id) : getButton(id);
+            if (!target) return;
+            const combined = getListItems(target.locality);
+            const idx = combined.findIndex(item => item.id === id);
             const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-            if (swapIdx < 0 || swapIdx >= group.length) { return; }
-            group.forEach((n, index) => { if (n.sortOrder === undefined) { n.sortOrder = index * 10; } });
-            const tmp = group[idx].sortOrder;
-            group[idx].sortOrder = group[swapIdx].sortOrder;
-            group[swapIdx].sortOrder = tmp;
-            group.forEach(n => {
-                const current = allNotes.find(x => x.id === n.id);
-                if (current) { current.sortOrder = n.sortOrder; }
+            if (idx < 0 || swapIdx < 0 || swapIdx >= combined.length) return;
+            combined.forEach((item, i) => {
+                if (item.data.sortOrder === undefined) { item.data.sortOrder = i * 10; }
             });
+            const current = combined[idx];
+            const swap = combined[swapIdx];
+            const tmp = current.data.sortOrder;
+            current.data.sortOrder = swap.data.sortOrder;
+            swap.data.sortOrder = tmp;
+            if (current.kind === 'button') {
+                const ab = allButtons.find(x => x.id === current.id);
+                if (ab) ab.sortOrder = current.data.sortOrder;
+            } else {
+                const an = allNotes.find(x => x.id === current.id);
+                if (an) an.sortOrder = current.data.sortOrder;
+            }
+            if (swap.kind === 'button') {
+                const ab = allButtons.find(x => x.id === swap.id);
+                if (ab) ab.sortOrder = swap.data.sortOrder;
+            } else {
+                const an = allNotes.find(x => x.id === swap.id);
+                if (an) an.sortOrder = swap.data.sortOrder;
+            }
             renderButtonLists();
-            flashMovedCard('[data-note-id="' + id + '"]');
-            vscode.postMessage({ type: 'reorderNote', id, direction });
+            const cardSelector = kind === 'note' ? '[data-note-id="' + id + '"]' : '[data-button-id="' + id + '"]';
+            flashMovedCard(cardSelector);
+            vscode.postMessage({
+                type: 'reorderItems',
+                updates: [
+                    { id: current.id, kind: current.kind, sortOrder: current.data.sortOrder },
+                    { id: swap.id, kind: swap.kind, sortOrder: swap.data.sortOrder }
+                ]
+            });
         }
 
         // ─── Type changed ───
@@ -2796,9 +3303,407 @@ ${sharedControlScript}
             return escapeHtml(s).replace(/'/g, '&#39;');
         }
 
+        // ─── Note Editor ───
+        function getNoteDefaultActionLabel(action) {
+            switch (action) {
+                case 'insert': return 'Insert into Active Editor';
+                case 'copilot': return 'Send to Copilot Chat';
+                case 'copy': return 'Copy to Clipboard';
+                default: return 'Open / Preview';
+            }
+        }
+
+        function renderNoteStaticLists() {
+            const modeSelect = document.getElementById('note-copilotMode');
+            modeSelect.innerHTML = MODES.map(mode => {
+                const label = mode.charAt(0).toUpperCase() + mode.slice(1);
+                return '<option value="' + escapeAttr(mode) + '">' + escapeHtml(label) + '</option>';
+            }).join('');
+            const actionSelect = document.getElementById('note-defaultAction');
+            actionSelect.innerHTML = NOTE_DEFAULT_ACTIONS.map(action => {
+                return '<option value="' + escapeAttr(action) + '">' + escapeHtml(getNoteDefaultActionLabel(action)) + '</option>';
+            }).join('');
+        }
+
+        function renderNoteLocalityOptions(selectedLocality) {
+            const localitySelect = document.getElementById('note-locality');
+            const wsLabel = currentWorkspaceName ? 'Workspace [' + currentWorkspaceName + ']' : 'Workspace';
+            localitySelect.innerHTML = '<option value="Global">Global</option><option value="Local">' + escapeHtml(wsLabel) + '</option>';
+            localitySelect.value = selectedLocality === 'Local' ? 'Local' : 'Global';
+        }
+
+        function deriveNoteProvenanceSummary(note) {
+            const createdBy = note && (note.createdBy === 'Agent' || note.createdBy === 'User') ? note.createdBy : '';
+            const lastModifiedBy = note && (note.lastModifiedBy === 'Agent' || note.lastModifiedBy === 'User') ? note.lastModifiedBy : '';
+            const legacySummary = note && (note.source === 'Agent' || note.source === 'AgentAndUser') ? note.source : 'User';
+            if (createdBy && lastModifiedBy) { return createdBy === lastModifiedBy ? createdBy : 'AgentAndUser'; }
+            if (legacySummary === 'AgentAndUser' && (createdBy || lastModifiedBy)) { return 'AgentAndUser'; }
+            return createdBy || lastModifiedBy || legacySummary;
+        }
+
+        function getNoteProvenanceActorDisplay(actor, summary) {
+            if (actor === 'Agent' || actor === 'User') { return actor; }
+            return summary === 'AgentAndUser' ? 'Unknown' : summary;
+        }
+
+        function renderNoteEditorProvenance(note) {
+            const summary = deriveNoteProvenanceSummary(note || {});
+            const createdBy = getNoteProvenanceActorDisplay(note && note.createdBy, summary);
+            const lastModifiedBy = getNoteProvenanceActorDisplay(note && note.lastModifiedBy, summary);
+            const hasLegacyGap = summary === 'AgentAndUser' && ((!note || !note.createdBy) || (!note || !note.lastModifiedBy));
+            document.getElementById('note-source-summary').textContent = summary;
+            document.getElementById('note-created-by').textContent = createdBy;
+            document.getElementById('note-last-modified-by').textContent = lastModifiedBy;
+            document.getElementById('note-provenance-help').textContent = hasLegacyGap
+                ? 'This item has legacy mixed provenance, so the exact creator or last editor may be unavailable.'
+                : 'ButtonFu fills these values automatically based on whether the change came from the editor or the ButtonFu API.';
+        }
+
+        function renderNoteTokenTable() {
+            const tbody = document.getElementById('noteTokenTableBody');
+            let html = '';
+
+            // System tokens section
+            html += '<tr class="token-section-header"><td colspan="3"><span class="codicon codicon-server"></span><span>System Tokens</span></td></tr>';
+            SYSTEM_TOKENS.forEach(st => {
+                html += '<tr draggable="true" data-drag-token="' + escapeAttr(st.token) + '">' +
+                    '<td style="color:var(--vscode-textLink-foreground)">' + escapeHtml(st.token) + '</td>' +
+                    '<td class="sys-label">' + escapeHtml(st.description) + '</td>' +
+                    '<td>' + escapeHtml(st.dataType) + '</td></tr>';
+            });
+
+            // User tokens section
+            html += '<tr class="token-section-header"><td colspan="3"><span class="codicon codicon-account"></span><span>User Tokens</span></td></tr>';
+            if (noteUserTokens.length === 0) {
+                html += '<tr><td colspan="3" style="color:var(--vscode-descriptionForeground);font-family:var(--vscode-font-family)">No user tokens defined. Click "Add User Token" to create one.</td></tr>';
+            } else {
+                noteUserTokens.forEach((ut, i) => {
+                    const valDisplay = ut.defaultValue ? escapeHtml(ut.defaultValue) : '<span style="color:var(--vscode-descriptionForeground);font-family:var(--vscode-font-family);font-style:italic">[User Requested]</span>';
+                    const reqBadge = ut.required ? ' <span style="color:#c72e2e;font-weight:bold" title="Required">*</span>' : '';
+                    html += '<tr class="user-token-table" draggable="true" data-drag-token="' + escapeAttr(ut.token) + '">' +
+                        '<td style="color:var(--vscode-textLink-foreground)">' + escapeHtml(ut.token) + reqBadge + '</td>' +
+                        '<td style="font-family:var(--vscode-font-family)">' + valDisplay + '</td>' +
+                        '<td>' + escapeHtml(ut.dataType) +
+                        '<span class="ut-actions">' +
+                        '<button class="btn-icon-xs" data-note-token-edit="' + i + '" title="Edit"><span class="codicon codicon-edit"></span></button>' +
+                        '<button class="btn-icon-xs" data-note-token-delete="' + i + '" title="Delete"><span class="codicon codicon-trash"></span></button>' +
+                        '</span></td></tr>';
+                });
+            }
+            tbody.innerHTML = html;
+            setupNoteTokenDragDrop();
+        }
+
+        function clearNoteTokenEditor() {
+            noteEditingTokenIndex = -1;
+            const errEl = document.getElementById('noteTokenNameError');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            document.getElementById('noteTokenName').style.borderColor = '';
+            document.getElementById('noteTokenName').value = '';
+            document.getElementById('noteTokenLabel').value = '';
+            document.getElementById('noteTokenDescription').value = '';
+            document.getElementById('noteTokenType').value = 'String';
+            document.getElementById('noteTokenDefault').value = '';
+            document.getElementById('noteTokenRequired').checked = false;
+        }
+
+        function showNoteTokenForm(index) {
+            const form = document.getElementById('noteUserTokenForm');
+            form.style.display = 'block';
+            const errEl = document.getElementById('noteTokenNameError');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            document.getElementById('noteTokenName').style.borderColor = '';
+
+            noteEditingTokenIndex = index;
+            if (index >= 0 && index < noteUserTokens.length) {
+                const t = noteUserTokens[index];
+                document.getElementById('noteUtFormTitle').textContent = 'Edit User Token';
+                document.getElementById('noteTokenName').value = t.token || '';
+                document.getElementById('noteTokenType').value = t.dataType || 'String';
+                document.getElementById('noteTokenLabel').value = t.label || '';
+                document.getElementById('noteTokenDescription').value = t.description || '';
+                document.getElementById('noteTokenDefault').value = t.defaultValue || '';
+                document.getElementById('noteTokenRequired').checked = t.required || false;
+            } else {
+                document.getElementById('noteUtFormTitle').textContent = 'New User Token';
+                document.getElementById('noteTokenName').value = '';
+                document.getElementById('noteTokenType').value = 'String';
+                document.getElementById('noteTokenLabel').value = '';
+                document.getElementById('noteTokenDescription').value = '';
+                document.getElementById('noteTokenDefault').value = '';
+                document.getElementById('noteTokenRequired').checked = false;
+            }
+            document.getElementById('noteTokenName').focus();
+        }
+
+        function hideNoteTokenForm() {
+            document.getElementById('noteUserTokenForm').style.display = 'none';
+            noteEditingTokenIndex = -1;
+        }
+
+        function setNoteTokenError(msg) {
+            const errEl = document.getElementById('noteTokenNameError');
+            const inp = document.getElementById('noteTokenName');
+            if (msg) {
+                errEl.textContent = msg;
+                errEl.style.display = 'block';
+                inp.style.borderColor = '#c72e2e';
+                inp.focus();
+            } else {
+                errEl.style.display = 'none';
+                errEl.textContent = '';
+                inp.style.borderColor = '';
+            }
+        }
+
+        function editNoteToken(index) {
+            showNoteTokenForm(index);
+        }
+
+        function saveNoteToken() {
+            let token = (document.getElementById('noteTokenName').value || '').trim();
+            if (!token) {
+                setNoteTokenError('Token name is required');
+                return;
+            }
+            token = '$' + token.replace(/^\\$+/, '').replace(/\\$+$/, '') + '$';
+            if (!/^\\$[A-Za-z_][A-Za-z0-9_]*\\$$/.test(token)) {
+                setNoteTokenError('Must be $Identifier$ — letters, digits, underscores only (e.g. $MyToken$)');
+                return;
+            }
+            if (SYSTEM_TOKENS.some(st => st.token.toLowerCase() === token.toLowerCase())) {
+                setNoteTokenError('This name conflicts with a system token — choose a different name');
+                return;
+            }
+            const dupIdx = noteUserTokens.findIndex((entry, i) => entry.token.toLowerCase() === token.toLowerCase() && i !== noteEditingTokenIndex);
+            if (dupIdx >= 0) {
+                setNoteTokenError('A user token with this name already exists');
+                return;
+            }
+            setNoteTokenError('');
+            const label = document.getElementById('noteTokenLabel').value.trim();
+            const description = document.getElementById('noteTokenDescription').value.trim();
+            const dataType = document.getElementById('noteTokenType').value;
+            const defaultValue = document.getElementById('noteTokenDefault').value.trim();
+            const required = document.getElementById('noteTokenRequired').checked;
+            const payload = { token, label, description, dataType, defaultValue, required };
+            if (noteEditingTokenIndex >= 0) {
+                noteUserTokens[noteEditingTokenIndex] = payload;
+            } else {
+                noteUserTokens.push(payload);
+            }
+            renderNoteTokenTable();
+            scrollNoteUserTokenIntoView(token);
+            hideNoteTokenForm();
+        }
+
+        function scrollNoteUserTokenIntoView(tokenName) {
+            if (!tokenName) return;
+            const tbody = document.getElementById('noteTokenTableBody');
+            if (!tbody) return;
+            const tokenLower = tokenName.toLowerCase();
+            const row = Array.from(tbody.querySelectorAll('tr.user-token-table'))
+                .find(r => (r.dataset.dragToken || '').toLowerCase() === tokenLower);
+            if (row) {
+                row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+
+        // ─── Note Token Drag-Drop ───
+        let noteTokenDragDropInit = false;
+        function setupNoteTokenDragDrop() {
+            const noteContent = document.getElementById('note-content');
+            if (!noteTokenDragDropInit) {
+                noteTokenDragDropInit = true;
+                const tbody = document.getElementById('noteTokenTableBody');
+                tbody.addEventListener('dragstart', onNoteTokenDragStart);
+                tbody.addEventListener('dragend', onNoteTokenDragEnd);
+                [noteContent].forEach(target => {
+                    if (!target) return;
+                    target.addEventListener('dragover', onNoteExecDragOver);
+                    target.addEventListener('dragleave', onNoteExecDragLeave);
+                    target.addEventListener('drop', onNoteExecDrop);
+                });
+            }
+        }
+        function onNoteTokenDragStart(e) {
+            const row = e.target.closest('tr[data-drag-token]');
+            if (!row) return;
+            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('text/plain', row.dataset.dragToken);
+            row.classList.add('drag-over-row');
+        }
+        function onNoteTokenDragEnd(e) {
+            document.querySelectorAll('#noteTokenTableBody tr.drag-over-row').forEach(r => r.classList.remove('drag-over-row'));
+        }
+        function onNoteExecDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            e.target.classList.add('drop-target-active');
+        }
+        function onNoteExecDragLeave(e) {
+            e.target.classList.remove('drop-target-active');
+        }
+        function onNoteExecDrop(e) {
+            e.preventDefault();
+            e.target.classList.remove('drop-target-active');
+            const token = e.dataTransfer.getData('text/plain');
+            if (!token) return;
+            const el = e.target;
+            if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+                const start = el.selectionStart ?? el.value.length;
+                const end = el.selectionEnd ?? el.value.length;
+                el.value = el.value.slice(0, start) + token + el.value.slice(end);
+                const newPos = start + token.length;
+                el.setSelectionRange(newPos, newPos);
+                el.focus();
+            }
+        }
+
+        // ─── Note File Picker ───
+        let noteAttachFiles = [];
+        function onNoteWorkspaceFileSearch() {
+            const q = document.getElementById('noteWorkspaceFileSearch').value;
+            if (!q) { document.getElementById('noteWorkspaceFileList').classList.remove('visible'); return; }
+            if (!cachedWorkspaceFiles) {
+                vscode.postMessage({ type: 'getWorkspaceFiles' });
+                pendingNoteFileSearch = true;
+            } else {
+                renderNoteWorkspaceFileList(cachedWorkspaceFiles, q);
+            }
+        }
+        let pendingNoteFileSearch = false;
+        function renderNoteWorkspaceFileList(files, filter) {
+            const list = document.getElementById('noteWorkspaceFileList');
+            const lower = (filter || '').toLowerCase();
+            if (!lower) { list.classList.remove('visible'); return; }
+            const filtered = files.filter(f => f.toLowerCase().includes(lower)).slice(0, 60);
+            if (!filtered.length) { list.classList.remove('visible'); return; }
+            list.innerHTML = filtered.map(f =>
+                '<div class="autocomplete-item" data-note-workspace-file="' + escapeAttr(f) + '">' +
+                '<span class="item-label">' + escapeHtml(f) + '</span></div>'
+            ).join('');
+            list.classList.add('visible');
+            list.scrollIntoView({ block: 'nearest' });
+        }
+        function addNoteWorkspaceFile(filePath) {
+            if (!noteAttachFiles.includes(filePath)) {
+                noteAttachFiles.push(filePath);
+                renderNoteFileChips();
+            }
+            document.getElementById('noteWorkspaceFileSearch').value = '';
+            document.getElementById('noteWorkspaceFileList').classList.remove('visible');
+        }
+        function renderNoteFileChips() {
+            const container = document.getElementById('noteFileChips');
+            container.innerHTML = noteAttachFiles.map((f, i) =>
+                '<span class="file-chip">' +
+                '<span class="codicon codicon-file"></span> ' + escapeHtml(f) +
+                ' <span class="remove-file" data-note-file-index="' + i + '">\u00d7</span></span>'
+            ).join('');
+        }
+        function removeNoteFile(idx) {
+            noteAttachFiles.splice(idx, 1);
+            renderNoteFileChips();
+        }
+
+        function clearNoteNameValidation() {
+            const nameInput = document.getElementById('note-name');
+            const nameError = document.getElementById('note-name-error');
+            nameInput.classList.remove('input-error');
+            nameError.textContent = '';
+            nameError.classList.remove('visible');
+        }
+
+        function showNoteNameValidationError() {
+            const nameInput = document.getElementById('note-name');
+            const nameError = document.getElementById('note-name-error');
+            nameInput.classList.add('input-error');
+            nameError.textContent = 'A name is required.';
+            nameError.classList.add('visible');
+        }
+
+        function addNote(locality) {
+            isNewNote = true;
+            const note = Object.assign({}, DEFAULT_NOTE, { locality: locality });
+            note.id = Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+            openNoteEditor(note);
+        }
+
+        function openNoteEditor(note) {
+            if (!note) return;
+            currentNote = note;
+            document.getElementById('noteEditorTitle').textContent = isNewNote ? 'New Note' : 'Edit Note';
+            document.getElementById('noteDeleteBtn').style.display = isNewNote ? 'none' : '';
+            document.getElementById('note-name').value = note.name || '';
+            clearNoteNameValidation();
+            document.getElementById('note-category').value = note.category || 'General';
+            renderNoteLocalityOptions(note.locality);
+            document.getElementById('note-defaultAction').value = note.defaultAction || 'open';
+            noteIconPicker.setValue(note.icon || DEFAULT_NOTE_ICON);
+            noteColourField.setValue(note.colour || '');
+            renderNoteEditorProvenance(note);
+            document.getElementById('note-format').value = note.format || 'PlainText';
+            document.getElementById('note-copilotModel').value = note.copilotModel || '';
+            document.getElementById('note-copilotMode').value = note.copilotMode || 'agent';
+            document.getElementById('note-content').value = note.content || '';
+            document.getElementById('note-attachActiveFile').checked = !!note.copilotAttachActiveFile;
+            noteAttachFiles = (note.copilotAttachFiles || []).slice();
+            renderNoteFileChips();
+            noteUserTokens = (note.userTokens || []).map(t => Object.assign({}, t));
+            renderNoteTokenTable();
+            hideNoteTokenForm();
+            document.getElementById('noteEditorOverlay').classList.add('visible');
+            document.getElementById('note-name').focus();
+        }
+
+        function closeNoteEditor() {
+            document.getElementById('noteEditorOverlay').classList.remove('visible');
+            currentNote = null;
+            isNewNote = false;
+        }
+
+        function saveCurrentNote() {
+            const name = document.getElementById('note-name').value.trim();
+            if (!name) {
+                showNoteNameValidationError();
+                document.getElementById('note-name').focus();
+                return;
+            }
+            const payload = {
+                id: currentNote ? currentNote.id : '',
+                name: name,
+                locality: document.getElementById('note-locality').value,
+                category: document.getElementById('note-category').value.trim() || 'General',
+                icon: document.getElementById('note-icon').value.trim() || DEFAULT_NOTE_ICON,
+                colour: document.getElementById('note-colour').value.trim(),
+                sortOrder: currentNote ? currentNote.sortOrder : undefined,
+                content: document.getElementById('note-content').value,
+                format: document.getElementById('note-format').value,
+                defaultAction: document.getElementById('note-defaultAction').value,
+                copilotModel: document.getElementById('note-copilotModel').value.trim(),
+                copilotMode: document.getElementById('note-copilotMode').value,
+                copilotAttachFiles: noteAttachFiles.slice(),
+                copilotAttachActiveFile: document.getElementById('note-attachActiveFile').checked,
+                userTokens: noteUserTokens.map(t => Object.assign({}, t)),
+                updatedAt: currentNote ? currentNote.updatedAt : Date.now()
+            };
+            vscode.postMessage({ type: 'saveNote', note: payload });
+        }
+
+        function deleteCurrentNote() {
+            if (currentNote && currentNote.id) {
+                vscode.postMessage({ type: 'deleteNote', id: currentNote.id });
+            }
+        }
+
+        renderNoteStaticLists();
+
         // ─── Event Listeners ───
         document.getElementById('addGlobalBtn').addEventListener('click', () => addButton('Global'));
         document.getElementById('addLocalBtn').addEventListener('click', () => addButton('Local'));
+        document.getElementById('addGlobalNoteBtn').addEventListener('click', () => addNote('Global'));
+        document.getElementById('addLocalNoteBtn').addEventListener('click', () => addNote('Local'));
         document.getElementById('deleteBtn').addEventListener('click', () => deleteCurrentButton());
         document.getElementById('cancelBtn').addEventListener('click', () => closeEditor());
         document.getElementById('saveBtn').addEventListener('click', () => saveButton());
@@ -3117,6 +4022,47 @@ ${sharedControlScript}
         document.getElementById('opt-enableAgentBridge').addEventListener('change', onOptionChanged);
         document.getElementById('opt-columns').addEventListener('change', onOptionChanged);
         document.getElementById('opt-columns').addEventListener('input', onOptionChanged);
+
+        // ─── Note Editor Event Listeners ───
+        document.getElementById('noteDeleteBtn').addEventListener('click', () => deleteCurrentNote());
+        document.getElementById('noteCancelBtn').addEventListener('click', () => closeNoteEditor());
+        document.getElementById('noteSaveBtn').addEventListener('click', () => saveCurrentNote());
+        document.getElementById('note-name').addEventListener('input', () => {
+            if (document.getElementById('note-name').value.trim().length > 0) {
+                clearNoteNameValidation();
+            }
+        });
+        document.getElementById('notePickFilesBtn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'pickFiles', target: 'note' });
+        });
+        document.getElementById('noteFileChips').addEventListener('click', (e) => {
+            const remove = e.target.closest('[data-note-file-index]');
+            if (remove) removeNoteFile(parseInt(remove.dataset.noteFileIndex));
+        });
+        document.getElementById('noteWorkspaceFileSearch').addEventListener('input', onNoteWorkspaceFileSearch);
+        document.getElementById('noteWorkspaceFileSearch').addEventListener('focus', onNoteWorkspaceFileSearch);
+        document.getElementById('noteWorkspaceFileSearch').addEventListener('blur', () => {
+            setTimeout(() => document.getElementById('noteWorkspaceFileList').classList.remove('visible'), 200);
+        });
+        document.getElementById('noteWorkspaceFileList').addEventListener('mousedown', (e) => {
+            const item = e.target.closest('[data-note-workspace-file]');
+            if (item) addNoteWorkspaceFile(item.dataset.noteWorkspaceFile);
+        });
+        document.getElementById('noteUserTokenForm').addEventListener('click', (e) => {
+            if (e.target.closest('#noteSaveTokenBtn')) { saveNoteToken(); return; }
+            if (e.target.closest('#noteCancelTokenBtn')) { hideNoteTokenForm(); return; }
+        });
+        document.getElementById('noteAddUserTokenBtn').addEventListener('click', () => showNoteTokenForm(-1));
+        document.getElementById('noteTokenTableBody').addEventListener('click', (e) => {
+            const editBtn = e.target.closest('[data-note-token-edit]');
+            if (editBtn) { showNoteTokenForm(Number(editBtn.dataset.noteTokenEdit)); return; }
+            const delBtn = e.target.closest('[data-note-token-delete]');
+            if (delBtn) {
+                noteUserTokens.splice(Number(delBtn.dataset.noteTokenDelete), 1);
+                renderNoteTokenTable();
+                hideNoteTokenForm();
+            }
+        });
     </script>
     <script src="${editorJsUri}" nonce="${nonce}"></script>
 </body>

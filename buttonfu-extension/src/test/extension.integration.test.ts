@@ -269,7 +269,11 @@ test('api create commands optionally open the editors for the saved item', async
                 createOrShowWithTab: () => undefined,
                 createOrShowWithButton: (_store: unknown, _extensionUri: unknown, buttonId: string) => {
                     openedButtonId = buttonId;
-                }
+                },
+                createOrShowWithNote: (_store: unknown, _extensionUri: unknown, noteId: string) => {
+                    openedNoteId = noteId;
+                },
+                createOrShowWithNewNote: () => undefined
             }
         },
         './noteEditorPanel': {
@@ -278,9 +282,7 @@ test('api create commands optionally open the editors for the saved item', async
                 closeCurrent: () => undefined,
                 createOrShow: () => undefined,
                 createOrShowWithNew: () => undefined,
-                createOrShowWithNode: (_store: unknown, _extensionUri: unknown, nodeId: string) => {
-                    openedNoteId = nodeId;
-                }
+                createOrShowWithNode: () => undefined
             }
         }
     });
@@ -353,13 +355,26 @@ test('addNote prompts for scope when invoked without a locality', async () => {
     let createLocality: string | undefined;
 
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
-        './noteEditorPanel': {
-            NoteEditorPanel: {
+        './editorPanel': {
+            ButtonEditorPanel: {
+                configure: () => undefined,
                 createOrShow: () => undefined,
-                createOrShowWithNode: () => undefined,
-                createOrShowWithNew: (_store: unknown, _extensionUri: unknown, locality: string) => {
+                createOrShowWithNew: () => undefined,
+                createOrShowWithTab: () => undefined,
+                createOrShowWithButton: () => undefined,
+                createOrShowWithNote: () => undefined,
+                createOrShowWithNewNote: (_store: unknown, _extensionUri: unknown, locality: string) => {
                     createLocality = locality;
                 }
+            }
+        },
+        './noteEditorPanel': {
+            NoteEditorPanel: {
+                configure: () => undefined,
+                closeCurrent: () => undefined,
+                createOrShow: () => undefined,
+                createOrShowWithNode: () => undefined,
+                createOrShowWithNew: () => undefined
             }
         }
     });
@@ -380,13 +395,26 @@ test('addNote uses an explicit locality without prompting', async () => {
     let createLocality: string | undefined;
 
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
-        './noteEditorPanel': {
-            NoteEditorPanel: {
+        './editorPanel': {
+            ButtonEditorPanel: {
+                configure: () => undefined,
                 createOrShow: () => undefined,
-                createOrShowWithNode: () => undefined,
-                createOrShowWithNew: (_store: unknown, _extensionUri: unknown, locality: string) => {
+                createOrShowWithNew: () => undefined,
+                createOrShowWithTab: () => undefined,
+                createOrShowWithButton: () => undefined,
+                createOrShowWithNote: () => undefined,
+                createOrShowWithNewNote: (_store: unknown, _extensionUri: unknown, locality: string) => {
                     createLocality = locality;
                 }
+            }
+        },
+        './noteEditorPanel': {
+            NoteEditorPanel: {
+                configure: () => undefined,
+                closeCurrent: () => undefined,
+                createOrShow: () => undefined,
+                createOrShowWithNode: () => undefined,
+                createOrShowWithNew: () => undefined
             }
         }
     });
@@ -436,12 +464,24 @@ test('openNoteEditor is enabled by default and opens the editor', async () => {
     let opened = false;
 
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
+        './editorPanel': {
+            ButtonEditorPanel: {
+                configure: () => undefined,
+                createOrShow: () => { opened = true; },
+                createOrShowWithNew: () => undefined,
+                createOrShowWithTab: () => undefined,
+                createOrShowWithButton: () => undefined,
+                createOrShowWithNote: () => undefined,
+                createOrShowWithNewNote: () => undefined
+            }
+        },
         './noteEditorPanel': {
             NoteEditorPanel: {
-                createOrShow: () => { opened = true; },
+                configure: () => undefined,
+                closeCurrent: () => undefined,
+                createOrShow: () => undefined,
                 createOrShowWithNode: () => undefined,
-                createOrShowWithNew: () => undefined,
-                closeCurrent: () => undefined
+                createOrShowWithNew: () => undefined
             }
         }
     });
@@ -460,12 +500,24 @@ test('notes commands are blocked when the showNotes setting is disabled', async 
     let opened = false;
 
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode, {
+        './editorPanel': {
+            ButtonEditorPanel: {
+                configure: () => undefined,
+                createOrShow: () => { opened = true; },
+                createOrShowWithNew: () => undefined,
+                createOrShowWithTab: () => undefined,
+                createOrShowWithButton: () => undefined,
+                createOrShowWithNote: () => undefined,
+                createOrShowWithNewNote: () => undefined
+            }
+        },
         './noteEditorPanel': {
             NoteEditorPanel: {
-                createOrShow: () => { opened = true; },
+                configure: () => undefined,
+                closeCurrent: () => undefined,
+                createOrShow: () => undefined,
                 createOrShowWithNode: () => undefined,
-                createOrShowWithNew: () => undefined,
-                closeCurrent: () => undefined
+                createOrShowWithNew: () => undefined
             }
         }
     });

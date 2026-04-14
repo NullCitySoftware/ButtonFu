@@ -150,6 +150,10 @@ test('sendNoteToCopilot forwards note prompt settings', async () => {
 
     let capturedRequest: unknown;
     (service as any).promptActions = {
+        captureSystemTokens: () => ({}),
+        captureClipboard: async () => {},
+        getUnresolvedUserTokens: () => [],
+        resolveText: (_text: string) => _text,
         sendToCopilot: async (request: unknown) => {
             capturedRequest = request;
         }
@@ -171,7 +175,6 @@ test('prompt-enabled copyNote resolves note aliases and default user tokens imme
     const note = createDefaultNote('Global');
     note.name = 'Prompt note';
     note.category = 'Prompts';
-    note.promptEnabled = true;
     note.content = 'Name=$NoteName$ Category=$NoteCategory$ Topic=$Topic$';
     note.userTokens = [
         {
@@ -204,7 +207,6 @@ test('prompt-enabled copyNote opens the token panel when unresolved values remai
 
     const note = createDefaultNote('Global');
     note.name = 'Unresolved prompt';
-    note.promptEnabled = true;
     note.content = 'Use $Topic$ for $NoteName$ in $NoteCategory$';
     note.category = 'Research';
     note.userTokens = [

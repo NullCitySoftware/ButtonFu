@@ -196,9 +196,11 @@ export class PromptActionService {
     getUnresolvedUserTokens(text: string, userTokens: UserToken[], systemSnap: TokenSnapshot): UnresolvedPromptToken[] {
         const usedLower = new Set(this.findTokensInText(text).map(token => token.toLowerCase()));
         const result: UnresolvedPromptToken[] = [];
+        const handledLower = new Set<string>();
 
         for (const token of userTokens) {
             const lower = token.token.toLowerCase();
+            handledLower.add(lower);
             if (!usedLower.has(lower)) { continue; }
             if (lower in systemSnap) { continue; }
             if (token.defaultValue !== undefined && token.defaultValue !== '') { continue; }
@@ -209,6 +211,20 @@ export class PromptActionService {
                 description: token.description || '',
                 dataType: token.dataType || 'String',
                 required: token.required ?? false
+            });
+        }
+
+        // Catch ad-hoc tokens in the text that are neither system tokens nor registered user tokens
+        for (const tokenStr of this.findTokensInText(text)) {
+            const lower = tokenStr.toLowerCase();
+            if (lower in systemSnap) { continue; }
+            if (handledLower.has(lower)) { continue; }
+            result.push({
+                token: tokenStr,
+                label: tokenStr,
+                description: '',
+                dataType: 'String',
+                required: false
             });
         }
 

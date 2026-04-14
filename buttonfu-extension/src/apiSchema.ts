@@ -100,7 +100,7 @@ const noteFields: ApiParamField[] = [
     { name: 'icon', type: 'string', required: false, description: 'Codicon icon name.', default: 'note' },
     { name: 'colour', type: 'string', required: false, description: 'Hex colour or empty for default.' },
     { name: 'sortOrder', type: 'number', required: false, description: 'Sort position within the category.' },
-    { name: 'promptEnabled', type: 'boolean', required: false, description: 'Resolve tokens before prompt execution.' },
+
     { name: 'copilotModel', type: 'string', required: false, description: 'For Copilot prompt actions: model ID.' },
     { name: 'copilotMode', type: 'string', required: false, description: 'For Copilot prompt actions: chat mode.', enum: ['agent', 'ask', 'edit', 'plan'], default: 'agent' },
     { name: 'copilotAttachFiles', type: 'string[]', required: false, description: 'For Copilot prompt actions: file paths to attach.' },

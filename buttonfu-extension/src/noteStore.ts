@@ -158,6 +158,15 @@ export class NoteStore {
         await this.persistNotes(allNotes);
     }
 
+    /** Update only the sortOrder of a note by ID. */
+    async setSortOrder(id: string, sortOrder: number): Promise<void> {
+        const allNotes = this.getAllNodes().map((entry) => this.cloneNote(entry));
+        const note = allNotes.find((entry) => entry.id === id);
+        if (!note) { return; }
+        note.sortOrder = sortOrder;
+        await this.persistNotes(allNotes);
+    }
+
     private normalizePersistedNotes(rawNotes: readonly unknown[], locality: ButtonLocality): NoteConfig[] {
         const legacyFoldersById = new Map<string, string>();
         for (const entry of rawNotes) {
@@ -225,7 +234,7 @@ export class NoteStore {
             content: typeof candidate.content === 'string' ? candidate.content : '',
             format: candidate.format === 'Markdown' ? 'Markdown' : 'PlainText',
             defaultAction: normalizeDefaultAction(candidate.defaultAction),
-            promptEnabled: typeof candidate.promptEnabled === 'boolean' ? candidate.promptEnabled : false,
+            promptEnabled: undefined,
             copilotModel: typeof candidate.copilotModel === 'string' ? candidate.copilotModel : '',
             copilotMode: typeof candidate.copilotMode === 'string' ? candidate.copilotMode : 'agent',
             copilotAttachFiles: Array.isArray(candidate.copilotAttachFiles)
