@@ -58,7 +58,7 @@ param(
     [string]$Method,
 
     [Parameter()]
-    [string]$Params,
+    [object]$Params,
 
     [Parameter()]
     [int]$BridgePid,
@@ -129,8 +129,14 @@ $rpc = @{
     auth    = $bridge.authToken
 }
 
-if ($Params) {
-    $rpc['params'] = $Params | ConvertFrom-Json
+if ($PSBoundParameters.ContainsKey('Params')) {
+    if ($Params -is [string]) {
+        if (-not [string]::IsNullOrWhiteSpace($Params)) {
+            $rpc['params'] = $Params | ConvertFrom-Json
+        }
+    } else {
+        $rpc['params'] = $Params
+    }
 }
 
 $body = $rpc | ConvertTo-Json -Depth 20 -Compress

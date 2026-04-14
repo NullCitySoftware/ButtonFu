@@ -88,18 +88,19 @@ Write-Host ""
 # Step 2: Build VS Code extension
 Write-Host "[2/3] Building VS Code extension..." -ForegroundColor Yellow
 
-# Install npm dependencies if needed
+# Install npm dependencies
 Push-Location $ExtensionDir
 try {
-    if (-not (Test-Path "node_modules")) {
-        if (Test-Path $ExtensionPackageLock) {
-            Write-Host "  Installing npm dependencies from lockfile..." -ForegroundColor Gray
-            & npm ci
+    if (Test-Path $ExtensionPackageLock) {
+        Write-Host "  Installing npm dependencies from lockfile..." -ForegroundColor Gray
+        & npm ci
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install npm dependencies."
         }
-        else {
-            Write-Host "  Installing npm dependencies..." -ForegroundColor Gray
-            & npm install
-        }
+    }
+    elseif (-not (Test-Path "node_modules")) {
+        Write-Host "  Installing npm dependencies..." -ForegroundColor Gray
+        & npm install
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to install npm dependencies."
         }

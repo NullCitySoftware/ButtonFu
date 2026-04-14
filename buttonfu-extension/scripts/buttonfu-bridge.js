@@ -100,6 +100,15 @@ Examples:
     const socket = net.createConnection(bridge.pipeName, () => {
         socket.write(body);
     });
+    const responseTimeout = setTimeout(() => {
+        console.error('Timeout waiting for bridge response.');
+        socket.destroy();
+        process.exit(1);
+    }, 5000);
+
+    const clearResponseTimeout = () => {
+        clearTimeout(responseTimeout);
+    };
 
     let buffer = '';
     socket.on('data', (chunk) => {
@@ -115,20 +124,18 @@ Examples:
                     console.log(line);
                 }
             }
+            clearResponseTimeout();
             socket.destroy();
         }
     });
 
     socket.on('error', (err) => {
+        clearResponseTimeout();
         console.error(`Bridge connection error: ${err.message}`);
         process.exit(1);
     });
 
-    setTimeout(() => {
-        console.error('Timeout waiting for bridge response.');
-        socket.destroy();
-        process.exit(1);
-    }, 5000);
+    socket.on('close', clearResponseTimeout);
 }
 
 main();
