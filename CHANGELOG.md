@@ -5,7 +5,7 @@ All notable changes to ButtonFu are documented here.
 ## [1.1.2] - 2026-04-13
 - 
 
-## [1.1.1] - 2026-04-13
+## [1.1.1] - 2026-04-14
 
 ### Added
 - **Notes in the main sidebar** — ButtonFu now supports Global and Workspace notes directly in the main sidebar, grouped alongside buttons and supporting plain-text or Markdown content, preview/open, copy, insert, send-to-Copilot, and edit actions
