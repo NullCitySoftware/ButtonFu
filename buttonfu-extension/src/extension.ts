@@ -12,8 +12,9 @@ import { NoteActionService } from './noteActionService';
 import { NoteEditorPanel } from './noteEditorPanel';
 import * as buttonApi from './buttonApiService';
 import * as noteApi from './noteApiService';
-import { AgentBridge } from './agentBridge';
+import { AgentBridge, listBridgeFiles, getBridgeDirectory } from './agentBridge';
 import type { WorkspaceContextProvider } from './agentBridge';
+import { AUTOMATION_GUIDANCE } from './apiSchema';
 import { sanitizeBridgeCommandParam } from './bridgeCommandSanitizer';
 import {
     clearDevApiSmokeData,
@@ -437,6 +438,93 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const result = await noteApi.deleteNote(noteStore, input);
             panelProvider.refresh();
             return result;
+        })
+    );
+
+    // -----------------------------------------------------------------------
+    // Agent Bridge help command
+    // -----------------------------------------------------------------------
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.copyAgentBridgeInstructions', async () => {
+            const bridgeEnabled = vscode.workspace.getConfiguration('buttonfu').get<boolean>('enableAgentBridge', false);
+            const bridges = listBridgeFiles();
+            const currentBridge = bridges.find(b => b.vscodePid === process.pid);
+
+            const lines: string[] = [
+                '# ButtonFu Agent Bridge — Automation Instructions',
+                '',
+                '## Rule: use the bridge, never edit storage directly',
+                '',
+                ...AUTOMATION_GUIDANCE.automationWarnings.map(w => `⚠️  ${w}`),
+                '',
+                '## Preferred automation surface',
+                '',
+                AUTOMATION_GUIDANCE.preferredAutomationSurface,
+                '',
+                '## Supported mutation surface',
+                '',
+                AUTOMATION_GUIDANCE.supportedMutationSurface,
+                '',
+                '## Unsupported mutation targets (DO NOT USE)',
+                '',
+                ...AUTOMATION_GUIDANCE.unsupportedAutomationMutationSurfaces.map(s => `- ${s}`),
+                '',
+                '## Bridge status',
+                '',
+                `Enabled: ${bridgeEnabled}`,
+                `Bridge discovery directory: ${getBridgeDirectory()}`,
+                `Active bridges found: ${bridges.length}`,
+            ];
+
+            if (currentBridge) {
+                lines.push(
+                    '',
+                    '## This window\'s bridge',
+                    '',
+                    `Window ID: ${currentBridge.windowId}`,
+                    `PID: ${currentBridge.pid}`,
+                    `Pipe: ${currentBridge.pipeName}`,
+                    `Workspace: ${currentBridge.workspaceName || '(none)'}`,
+                    '',
+                    '## Ready-to-use example (PowerShell)',
+                    '',
+                    '```powershell',
+                    `$bridge = Get-Content "$env:USERPROFILE\\.buttonfu\\bridge-${currentBridge.pid}.json" | ConvertFrom-Json`,
+                    '$body = @{',
+                    '    jsonrpc = "2.0"; id = 1',
+                    '    method  = "buttonfu.api.listButtons"',
+                    '    auth    = $bridge.authToken',
+                    '} | ConvertTo-Json',
+                    '',
+                    '# Connect to the named pipe and send the request',
+                    '$pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", $bridge.pipeName.Replace("\\\\.\\pipe\\",""), "InOut")',
+                    '$pipe.Connect(5000)',
+                    '$writer = New-Object System.IO.StreamWriter($pipe)',
+                    '$reader = New-Object System.IO.StreamReader($pipe)',
+                    '$writer.WriteLine($body)',
+                    '$writer.Flush()',
+                    '$response = $reader.ReadLine()',
+                    '$pipe.Dispose()',
+                    '$response | ConvertFrom-Json | ConvertTo-Json -Depth 10',
+                    '```',
+                );
+            } else if (!bridgeEnabled) {
+                lines.push(
+                    '',
+                    '## How to enable',
+                    '',
+                    'Set `buttonfu.enableAgentBridge` to `true` in VS Code settings,',
+                    'or run:  code --setting buttonfu.enableAgentBridge=true',
+                );
+            }
+
+            const text = lines.join('\n');
+            await vscode.env.clipboard.writeText(text);
+            void vscode.window.showInformationMessage(
+                'ButtonFu Agent Bridge instructions copied to clipboard.'
+            );
+            return text;
         })
     );
 

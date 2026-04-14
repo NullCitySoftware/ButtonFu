@@ -1168,3 +1168,90 @@ test('listBridgeFiles returns entries without authToken', () => {
         fs.unlinkSync(testPath);
     }
 });
+
+// ---------------------------------------------------------------------------
+// Discovery payload automation guidance
+// ---------------------------------------------------------------------------
+
+test('bridge discovery file includes automationGuidance', async () => {
+    const logger = createTestLogger();
+    const exec = createFakeExecuteCommand();
+    const bridge = new AgentBridge(exec, logger, '1.0.0');
+    bridge.setWorkspaceContext(createFakeWorkspaceContext());
+
+    await bridge.start();
+    try {
+        const info = readBridgeInfo();
+        assert.ok(info.automationGuidance, 'automationGuidance must be present in discovery');
+        assert.ok(info.automationGuidance.preferredAutomationSurface.length > 0);
+        assert.ok(info.automationGuidance.supportedMutationSurface.length > 0);
+        assert.ok(Array.isArray(info.automationGuidance.unsupportedAutomationMutationSurfaces));
+        assert.ok(info.automationGuidance.unsupportedAutomationMutationSurfaces.length >= 4);
+        assert.ok(Array.isArray(info.automationGuidance.automationWarnings));
+        assert.ok(info.automationGuidance.automationWarnings.length >= 1);
+    } finally {
+        await bridge.stop();
+    }
+});
+
+test('bridge discovery automationGuidance warns against direct storage mutation', async () => {
+    const logger = createTestLogger();
+    const exec = createFakeExecuteCommand();
+    const bridge = new AgentBridge(exec, logger, '1.0.0');
+    bridge.setWorkspaceContext(createFakeWorkspaceContext());
+
+    await bridge.start();
+    try {
+        const info = readBridgeInfo();
+        const allText = [
+            info.automationGuidance.preferredAutomationSurface,
+            info.automationGuidance.supportedMutationSurface,
+            ...info.automationGuidance.unsupportedAutomationMutationSurfaces,
+            ...info.automationGuidance.automationWarnings
+        ].join(' ').toLowerCase();
+
+        assert.ok(allText.includes('buttonfu.api.'), 'must reference buttonfu.api methods');
+        assert.ok(
+            allText.includes('state.vscdb') || allText.includes('workspace storage'),
+            'must warn about workspace storage'
+        );
+        assert.ok(
+            allText.includes('do not mutate'),
+            'must include "do not mutate" directive'
+        );
+    } finally {
+        await bridge.stop();
+    }
+});
+
+// ---------------------------------------------------------------------------
+// describe response automation guidance
+// ---------------------------------------------------------------------------
+
+test('describe response includes automationGuidance fields', async () => {
+    const logger = createTestLogger();
+    const exec = createFakeExecuteCommand();
+    const bridge = new AgentBridge(exec, logger, '2.0.0');
+    bridge.setWorkspaceContext(createFakeWorkspaceContext());
+
+    await bridge.start();
+    try {
+        const info = readBridgeInfo();
+        const conn = await connectToBridge(info.pipeName);
+        try {
+            conn.send({ jsonrpc: '2.0', id: 99, method: 'buttonfu.api.describe', auth: info.authToken });
+            const raw = await conn.readLine();
+            const rpc = JSON.parse(raw);
+            assert.ok(rpc.result);
+            assert.ok(rpc.result.automationGuidance, 'describe result must include automationGuidance');
+            assert.ok(rpc.result.automationGuidance.preferredAutomationSurface);
+            assert.ok(rpc.result.automationGuidance.supportedMutationSurface);
+            assert.ok(Array.isArray(rpc.result.automationGuidance.unsupportedAutomationMutationSurfaces));
+            assert.ok(Array.isArray(rpc.result.automationGuidance.automationWarnings));
+        } finally {
+            conn.destroy();
+        }
+    } finally {
+        await bridge.stop();
+    }
+});

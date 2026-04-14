@@ -147,4 +147,40 @@ ButtonFu includes an optional **Agent Bridge** — a named-pipe JSON-RPC 2.0 ser
 
 Agents discover the bridge by reading `~/.buttonfu/bridge-{pid}.json`, which includes the pipe name, authentication token, `describeMethod`, version metadata, and bridge limits. Call **`buttonfu.api.describe`** through the bridge to get the full self-describing API schema — all methods, parameter types, validation rules, examples, and error codes — without reading source files.
 
+> **⚠️ Automation rule — bridge-first, always.**
+>
+> All button and note mutations MUST go through the ButtonFu Agent Bridge or the registered `buttonfu.api.*` VS Code commands. **Do not mutate ButtonFu data by editing VS Code storage directly** — including `state.vscdb`, workspace state, the `nullcity.buttonfu` memento, or the `buttonfu.globalButtons` / `buttonfu.globalNotes` settings keys. Direct writes bypass validation, provenance tracking, UI refresh, and may corrupt or lose data. The internal storage format is not a stable API and may change without notice.
+
+### Helper scripts
+
+The repo includes helper scripts in `buttonfu-extension/scripts/` that handle bridge discovery, authentication, and named-pipe communication automatically:
+
+**PowerShell:**
+
+```powershell
+# List all buttons
+.\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method listButtons
+
+# Create a button
+.\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method createButton `
+    -Params '{"name":"Run Tests","locality":"Global","type":"TerminalCommand","executionText":"npm test"}'
+
+# Describe the full API schema
+.\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method describe
+```
+
+**Node.js:**
+
+```bash
+# List all buttons
+node buttonfu-extension/scripts/buttonfu-bridge.js listButtons
+
+# Create a button
+node buttonfu-extension/scripts/buttonfu-bridge.js createButton '{"name":"Run Tests","locality":"Global","type":"TerminalCommand","executionText":"npm test"}'
+```
+
+### In-product help
+
+Run **ButtonFu: Copy Agent Bridge Instructions** from the Command Palette to copy the current bridge status, connection details for the active window, a ready-to-use example, and the automation rules to the clipboard. Useful for handing bridge details to an AI agent or a colleague.
+
 The repository root copilot-instructions.md contains the full protocol reference for contributors working inside this codebase.

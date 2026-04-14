@@ -458,10 +458,19 @@ export class ButtonExecutor {
             const commandId = parts[0].trim();
             
             if (parts.length > 1) {
+                const rawArgs = parts.slice(1).join('|').trim();
+                if (!rawArgs) {
+                    await vscode.commands.executeCommand(commandId);
+                    return;
+                }
+
                 try {
-                    const args = JSON.parse(parts.slice(1).join('|'));
+                    const args = JSON.parse(rawArgs);
                     await vscode.commands.executeCommand(commandId, args);
                 } catch {
+                    await vscode.window.showWarningMessage(
+                        `ButtonFu: Invalid JSON arguments for command "${commandId}". Executing without arguments.`
+                    );
                     await vscode.commands.executeCommand(commandId);
                 }
             } else {
@@ -528,6 +537,8 @@ export class ButtonExecutor {
         try {
             const headFile = this.resolveGitHeadFile(workspacePath);
             if (!headFile || !fs.existsSync(headFile)) { return ''; }
+            const headStats = fs.lstatSync(headFile);
+            if (!headStats.isFile() || headStats.isSymbolicLink()) { return ''; }
             const head = fs.readFileSync(headFile, 'utf8').trim();
             const match = head.match(/^ref:\s+refs\/heads\/(.+)$/);
             return match ? match[1] : head.slice(0, 8);

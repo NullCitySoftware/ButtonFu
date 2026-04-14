@@ -6,13 +6,46 @@ import test from 'node:test';
 import { createDefaultButton } from '../types';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
 
-function createExecutorContext() {
+function createExecutorContext(overrides: Record<string, unknown> = {}) {
     const harness = createFakeVscodeHarness();
     const modulePath = path.resolve(__dirname, '..', 'buttonExecutor.js');
-    const executorModule = loadWithPatchedVscode<{ ButtonExecutor: new () => any }>(modulePath, harness.vscode);
+    const executorModule = loadWithPatchedVscode<{ ButtonExecutor: new () => any }>(modulePath, harness.vscode, overrides);
     const executor = new executorModule.ButtonExecutor();
     return { harness, executor };
 }
+
+test('execute palette action passes parsed JSON arguments to the command', async () => {
+    const { harness, executor } = createExecutorContext();
+    const button = createDefaultButton('Global');
+    button.type = 'PaletteAction';
+    button.executionText = 'workbench.action.files.save|{"force":true}';
+
+    await executor.execute(button);
+
+    assert.deepEqual(harness.executedCommands.at(-1), {
+        command: 'workbench.action.files.save',
+        args: [{ force: true }]
+    });
+    assert.equal(harness.warningMessages.length, 0);
+});
+
+test('execute palette action warns and falls back when JSON arguments are invalid', async () => {
+    const { harness, executor } = createExecutorContext();
+    const button = createDefaultButton('Global');
+    button.type = 'PaletteAction';
+    button.executionText = 'workbench.action.files.save|{invalid-json}';
+
+    await executor.execute(button);
+
+    assert.deepEqual(harness.executedCommands.at(-1), {
+        command: 'workbench.action.files.save',
+        args: []
+    });
+    assert.equal(
+        harness.warningMessages.at(-1),
+        'ButtonFu: Invalid JSON arguments for command "workbench.action.files.save". Executing without arguments.'
+    );
+});
 
 test('captureSystemTokens resolves GitBranch for git worktree checkouts', () => {
     const { harness, executor } = createExecutorContext();
@@ -74,6 +107,46 @@ test('captureSystemTokens ignores unsupported gitdir redirects', () => {
     fs.writeFileSync(path.join(workspacePath, '.git'), 'gitdir: ../outside\n');
     fs.writeFileSync(path.join(outsidePath, 'HEAD'), 'ref: refs/heads/private-data\n');
 
+    harness.setWorkspaceFolders([{ name: 'Workspace', fsPath: workspacePath }], { fireEvent: false });
+
+    try {
+        const button = createDefaultButton('Global');
+        button.name = 'Workspace Button';
+
+        const snapshot = executor.captureSystemTokens(button);
+        assert.equal(snapshot['$gitbranch$'], '');
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('captureSystemTokens ignores symlinked git HEAD files', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'buttonfu-button-headlink-'));
+    const workspacePath = path.join(root, 'workspace');
+    const gitPath = path.join(workspacePath, '.git');
+    const headFile = path.join(gitPath, 'HEAD');
+
+    fs.mkdirSync(gitPath, { recursive: true });
+    fs.writeFileSync(headFile, 'ref: refs/heads/main\n');
+
+    const realFs = fs;
+    const mockedFs = {
+        ...realFs,
+        lstatSync: (targetPath: fs.PathLike, options?: fs.StatOptions & { bigint?: false | undefined }) => {
+            const stats = realFs.lstatSync(targetPath, options as any);
+            if (path.resolve(String(targetPath)) !== path.resolve(headFile)) {
+                return stats;
+            }
+
+            return {
+                ...stats,
+                isFile: () => false,
+                isSymbolicLink: () => true
+            };
+        }
+    };
+
+    const { harness, executor } = createExecutorContext({ fs: mockedFs });
     harness.setWorkspaceFolders([{ name: 'Workspace', fsPath: workspacePath }], { fireEvent: false });
 
     try {

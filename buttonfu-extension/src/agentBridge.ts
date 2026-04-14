@@ -21,8 +21,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { AGENT_BRIDGE_NAME, AGENT_BRIDGE_SCHEMA_VERSION, buildApiSchema } from './apiSchema';
-import type { BridgeContext } from './apiSchema';
+import { AGENT_BRIDGE_NAME, AGENT_BRIDGE_SCHEMA_VERSION, AUTOMATION_GUIDANCE, buildApiSchema } from './apiSchema';
+import type { AutomationGuidance, BridgeContext } from './apiSchema';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,6 +97,7 @@ export interface BridgeInfo {
     describeMethod: string;
     schemaVersion: number;
     capabilities: string[];
+    automationGuidance: AutomationGuidance;
     limits: {
         maxMessageBytes: number;
         maxConnections: number;
@@ -249,6 +250,7 @@ function buildBridgeInfo(
         describeMethod: DESCRIBE_METHOD,
         schemaVersion: AGENT_BRIDGE_SCHEMA_VERSION,
         capabilities: ['buttons', 'notes', 'introspection', 'batch-operations'],
+        automationGuidance: AUTOMATION_GUIDANCE,
         limits: {
             maxMessageBytes: MAX_MESSAGE_BYTES,
             maxConnections: MAX_CONNECTIONS,

@@ -24,6 +24,7 @@ $PublishDir = Join-Path $ProjectRoot "bin\publish"
 $ExtensionDir = Join-Path $ProjectRoot "buttonfu-extension"
 $InnoScript = Join-Path $InstallerDir "ButtonFu.iss"
 $ExtensionPackageJson = Join-Path $ExtensionDir "package.json"
+$ExtensionPackageLock = Join-Path $ExtensionDir "package-lock.json"
 
 # Installer metadata follows the extension package manifest so release artifacts stay aligned.
 $PackageManifest = Get-Content $ExtensionPackageJson -Raw | ConvertFrom-Json
@@ -91,11 +92,23 @@ Write-Host "[2/3] Building VS Code extension..." -ForegroundColor Yellow
 Push-Location $ExtensionDir
 try {
     if (-not (Test-Path "node_modules")) {
-        Write-Host "  Installing npm dependencies..." -ForegroundColor Gray
-        & npm install
+        if (Test-Path $ExtensionPackageLock) {
+            Write-Host "  Installing npm dependencies from lockfile..." -ForegroundColor Gray
+            & npm ci
+        }
+        else {
+            Write-Host "  Installing npm dependencies..." -ForegroundColor Gray
+            & npm install
+        }
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to install npm dependencies."
         }
+    }
+
+    Write-Host "  Auditing production dependencies..." -ForegroundColor Gray
+    & npm audit --omit=dev --audit-level=moderate
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm audit reported moderate-or-higher production dependency vulnerabilities."
     }
     
     # Compile TypeScript
@@ -124,6 +137,20 @@ $vsixFile = Get-ChildItem -Path $ExtensionStagingDir -Filter "*.vsix" | Sort-Obj
 if (-not $vsixFile) {
     throw "No VSIX package found in staging directory: $ExtensionStagingDir"
 }
+
+$expectedVsixName = "buttonfu-$Version.vsix"
+if ($vsixFile.Name -ne $expectedVsixName) {
+    throw "Expected VSIX package '$expectedVsixName' but found '$($vsixFile.Name)'."
+}
+
+if ($vsixFile.Length -le 0) {
+    throw "VSIX package '$($vsixFile.FullName)' is empty."
+}
+
+$vsixHash = (Get-FileHash -Path $vsixFile.FullName -Algorithm SHA256).Hash
+Write-Host "  VSIX package verified: $($vsixFile.Name)" -ForegroundColor Green
+Write-Host "  VSIX SHA256: $vsixHash" -ForegroundColor Gray
+Write-Host ""
 
 # Step 3: Build Inno Setup installer
 Write-Host "[3/3] Building Inno Setup installer..." -ForegroundColor Yellow
