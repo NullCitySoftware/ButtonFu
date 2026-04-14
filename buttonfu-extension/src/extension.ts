@@ -449,6 +449,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand('buttonfu.copyAgentBridgeInstructions', async () => {
             const bridgeEnabled = vscode.workspace.getConfiguration('buttonfu').get<boolean>('enableAgentBridge', false);
             const bridges = listBridgeFiles();
+            const bridgeDirectory = getBridgeDirectory();
             const currentBridge = bridges.find(b => b.vscodePid === process.pid);
 
             const lines: string[] = [
@@ -473,7 +474,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 '## Bridge status',
                 '',
                 `Enabled: ${bridgeEnabled}`,
-                `Bridge discovery directory: ${getBridgeDirectory()}`,
+                `Bridge discovery directory: ${bridgeDirectory}`,
                 `Active bridges found: ${bridges.length}`,
             ];
 
@@ -490,12 +491,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     '## Ready-to-use example (PowerShell)',
                     '',
                     '```powershell',
-                    `$bridge = Get-Content "$env:USERPROFILE\\.buttonfu\\bridge-${currentBridge.pid}.json" | ConvertFrom-Json`,
+                    '$bridgeDir = Join-Path $HOME ".buttonfu"',
+                    `$bridgePath = Join-Path $bridgeDir "bridge-${currentBridge.pid}.json"`,
+                    '$bridge = Get-Content $bridgePath -Raw | ConvertFrom-Json',
                     '$body = @{',
                     '    jsonrpc = "2.0"; id = 1',
                     '    method  = "buttonfu.api.listButtons"',
                     '    auth    = $bridge.authToken',
-                    '} | ConvertTo-Json',
+                    '} | ConvertTo-Json -Depth 20 -Compress',
                     '',
                     '# Connect to the named pipe and send the request',
                     '$pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", $bridge.pipeName.Replace("\\\\.\\pipe\\",""), "InOut")',
@@ -514,8 +517,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     '',
                     '## How to enable',
                     '',
-                    'Set `buttonfu.enableAgentBridge` to `true` in VS Code settings,',
-                    'or run:  code --setting buttonfu.enableAgentBridge=true',
+                    'Set `buttonfu.enableAgentBridge` to `true` in VS Code settings.',
+                    'You can use the Settings UI or edit your `settings.json` file.',
                 );
             }
 

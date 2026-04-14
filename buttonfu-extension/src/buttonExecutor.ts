@@ -453,7 +453,7 @@ export class ButtonExecutor {
     private async executePaletteAction(button: ButtonConfig): Promise<void> {
         try {
             // Support passing arguments as JSON after the command ID
-            // Format: "commandId" or "commandId|{arg1: value}"
+            // Format: "commandId" or "commandId|{\"arg1\":\"value\"}"
             const parts = button.executionText.split('|');
             const commandId = parts[0].trim();
             
