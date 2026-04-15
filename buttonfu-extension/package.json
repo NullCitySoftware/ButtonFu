@@ -199,6 +199,18 @@
       {
         "command": "buttonfu.copyAgentBridgeInstructions",
         "title": "ButtonFu: Copy Agent Bridge Instructions"
+      },
+      {
+        "command": "buttonfu.agentBridgeStatus",
+        "title": "ButtonFu: Agent Bridge Status"
+      },
+      {
+        "command": "buttonfu.agentBridgeDoctor",
+        "title": "ButtonFu: Agent Bridge Doctor"
+      },
+      {
+        "command": "buttonfu.agentBridgeCopyQuickStart",
+        "title": "ButtonFu: Copy Agent Bridge Quick Start"
       }
     ],
     "menus": {
@@ -226,6 +238,18 @@
         {
           "command": "buttonfu.dev.clearDriveNetSmokeData",
           "when": "buttonfu.isDevelopmentMode"
+        },
+        {
+          "command": "buttonfu.copyAgentBridgeInstructions"
+        },
+        {
+          "command": "buttonfu.agentBridgeStatus"
+        },
+        {
+          "command": "buttonfu.agentBridgeDoctor"
+        },
+        {
+          "command": "buttonfu.agentBridgeCopyQuickStart"
         }
       ],
       "view/title": [

@@ -83,6 +83,9 @@ test('activate registers the flat note commands and providers', async () => {
         'buttonfu.api.updateNote',
         'buttonfu.api.deleteNote',
         'buttonfu.copyAgentBridgeInstructions',
+        'buttonfu.agentBridgeStatus',
+        'buttonfu.agentBridgeDoctor',
+        'buttonfu.agentBridgeCopyQuickStart',
         DEV_RESET_API_SMOKE_COMMAND,
         DEV_CLEAR_API_SMOKE_COMMAND,
         DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND
@@ -123,6 +126,7 @@ test('copyAgentBridgeInstructions generates a PowerShell example that works from
 
     assert.equal(harness.clipboardWrites.at(-1), text);
     assert.match(text, /Bridge discovery directory: .*\.buttonfu/);
+    assert.match(text, /Bridge runtime running:/);
     assert.match(text, /\$bridgeDir = Join-Path \$HOME "\.buttonfu"/);
     assert.match(text, /\$bridgePath = Join-Path \$bridgeDir "bridge-4242\.json"/);
     assert.match(text, /\$bridge = Get-Content \$bridgePath -Raw \| ConvertFrom-Json/);
@@ -146,8 +150,36 @@ test('copyAgentBridgeInstructions uses supported enablement guidance when the br
 
     assert.equal(harness.clipboardWrites.at(-1), text);
     assert.match(text, /Set `buttonfu\.enableAgentBridge` to `true` in VS Code settings\./);
-    assert.match(text, /You can use the Settings UI or edit your `settings\.json` file\./);
+    assert.match(text, /Then run `ButtonFu: Agent Bridge Status` to confirm this window has an active bridge\./);
     assert.doesNotMatch(text, /code --setting/);
+});
+
+test('agentBridgeCopyQuickStart includes targetWindowId for the active window', async () => {
+    const harness = createFakeVscodeHarness();
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    const extension = loadWithPatchedVscode<{ activate(context: any): Promise<void> }>(
+        extensionModulePath,
+        harness.vscode,
+        createAgentBridgeOverride({
+            bridgeFiles: [{
+                vscodePid: process.pid,
+                windowId: 'window-xyz',
+                pid: 8123,
+                pipeName: '\\\\.\\pipe\\buttonfu-vscode-8123',
+                workspaceName: 'Agent Workspace'
+            }]
+        })
+    );
+    const context = harness.createExtensionContext();
+
+    await extension.activate(context);
+
+    const text = await harness.vscode.commands.executeCommand('buttonfu.agentBridgeCopyQuickStart') as string;
+
+    assert.equal(harness.clipboardWrites.at(-1), text);
+    assert.match(text, /buttonfu\.api\.describe/);
+    assert.match(text, /targetWindowId = "window-xyz"/);
+    assert.match(text, /bridge-8123\.json/);
 });
 
 test('production activation does not register development-only smoke commands', async () => {

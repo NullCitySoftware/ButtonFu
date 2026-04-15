@@ -10,9 +10,16 @@ export class NotePreviewProvider implements vscode.TextDocumentContentProvider {
     readonly onDidChange = this._onDidChange.event;
 
     private readonly trackedUris = new Map<string, vscode.Uri>();
+    private readonly storeChangeDisposable: vscode.Disposable;
 
     constructor(private readonly store: NoteStore) {
-        store.onDidChange(() => this.refreshAll());
+        this.storeChangeDisposable = store.onDidChange(() => this.refreshAll());
+    }
+
+    dispose(): void {
+        this.storeChangeDisposable.dispose();
+        this.trackedUris.clear();
+        this._onDidChange.dispose();
     }
 
     /** Build a preview URI for a note. */

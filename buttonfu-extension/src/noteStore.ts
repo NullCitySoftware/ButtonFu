@@ -37,13 +37,19 @@ export class NoteStore {
     private readonly _onDidChange = new vscode.EventEmitter<void>();
     public readonly onDidChange = this._onDidChange.event;
     private suppressGlobalConfigRefresh = false;
+    private readonly configChangeDisposable: vscode.Disposable;
 
     constructor(private readonly context: vscode.ExtensionContext) {
-        vscode.workspace.onDidChangeConfiguration((event) => {
+        this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration((event) => {
             if (!this.suppressGlobalConfigRefresh && event.affectsConfiguration('buttonfu.globalNotes')) {
                 this._onDidChange.fire();
             }
         });
+    }
+
+    dispose(): void {
+        this.configChangeDisposable.dispose();
+        this._onDidChange.dispose();
     }
 
     /** Get all global notes from user settings. */

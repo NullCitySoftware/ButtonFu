@@ -35,11 +35,17 @@ export class ButtonEditorPanel {
     public static currentPanel: ButtonEditorPanel | undefined;
     private static _globalState: vscode.Memento | undefined;
     private static _onOptionsChanged: (() => void) | undefined;
+    private static _executeButtonTest: ((button: ButtonConfig) => Promise<void>) | undefined;
 
-    /** Call once from activate() to wire up global state and sidebar refresh */
-    public static configure(globalState: vscode.Memento, onOptionsChanged: () => void): void {
+    /** Call once from activate() to wire up global state, sidebar refresh, and test execution */
+    public static configure(
+        globalState: vscode.Memento,
+        onOptionsChanged: () => void,
+        executeButtonTest?: (button: ButtonConfig) => Promise<void>
+    ): void {
         ButtonEditorPanel._globalState = globalState;
         ButtonEditorPanel._onOptionsChanged = onOptionsChanged;
+        ButtonEditorPanel._executeButtonTest = executeButtonTest;
     }
 
     private readonly panel: vscode.WebviewPanel;
@@ -358,6 +364,41 @@ export class ButtonEditorPanel {
                 if (this.noteStore) {
                     await this.noteStore.reorderNode(message.id as string, message.direction as 'up' | 'down');
                 }
+                break;
+            }
+            case 'testButton': {
+                const raw = message.button;
+                if (!raw || typeof raw !== 'object') { break; }
+                const validTypes = ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'];
+                if (!validTypes.includes(raw.type as string)) { break; }
+                if (!ButtonEditorPanel._executeButtonTest) { break; }
+                const testBtn: ButtonConfig = {
+                    id: typeof raw.id === 'string' && raw.id ? raw.id : '__test__',
+                    name: typeof raw.name === 'string' && raw.name ? raw.name : 'Test',
+                    locality: 'Global',
+                    description: '',
+                    type: raw.type as ButtonConfig['type'],
+                    executionText: typeof raw.executionText === 'string' ? raw.executionText : '',
+                    terminals: Array.isArray(raw.terminals)
+                        ? (raw.terminals as any[]).map(t => ({
+                            name: typeof t?.name === 'string' ? t.name : 'Terminal',
+                            commands: typeof t?.commands === 'string' ? t.commands : '',
+                            dependentOnPrevious: Boolean(t?.dependentOnPrevious)
+                        }))
+                        : undefined,
+                    category: 'General',
+                    icon: 'play',
+                    colour: '',
+                    copilotModel: typeof raw.copilotModel === 'string' ? raw.copilotModel : '',
+                    copilotMode: typeof raw.copilotMode === 'string' ? raw.copilotMode : 'agent',
+                    copilotAttachFiles: Array.isArray(raw.copilotAttachFiles)
+                        ? (raw.copilotAttachFiles as unknown[]).filter((f): f is string => typeof f === 'string')
+                        : [],
+                    copilotAttachActiveFile: Boolean(raw.copilotAttachActiveFile),
+                    warnBeforeExecution: false,
+                    userTokens: Array.isArray(raw.userTokens) ? raw.userTokens : []
+                };
+                await ButtonEditorPanel._executeButtonTest(testBtn);
                 break;
             }
         }
@@ -1312,6 +1353,62 @@ ${autocompleteStyles}
             align-items: center;
             gap: 8px;
         }
+        /* ─── Test button row (terminal tabs + execution group) ─── */
+        .test-btn-row {
+            display: flex;
+            justify-content: flex-end;
+            padding-top: 4px;
+        }
+        .terminal-command-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 4px;
+        }
+        .terminal-command-header > label {
+            margin-bottom: 0 !important;
+        }
+        .split-btn-group {
+            display: inline-flex;
+            border-radius: 4px;
+            position: relative;
+        }
+        .split-btn-group .split-btn-primary {
+            border-radius: 4px 0 0 4px;
+            border-right: 1px solid rgba(128,128,128,0.35);
+        }
+        .split-btn-group .split-btn-arrow {
+            border-radius: 0 4px 4px 0;
+            padding: 5px 7px;
+        }
+        .split-btn-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 4px);
+            min-width: 160px;
+            background: var(--vscode-quickInput-background, var(--vscode-editor-background));
+            border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            z-index: 200;
+            padding: 3px 0;
+        }
+        .split-btn-menu button {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            padding: 6px 12px;
+            background: transparent;
+            border: none;
+            color: var(--vscode-foreground);
+            font-size: 12px;
+            font-family: var(--vscode-font-family);
+            cursor: pointer;
+            text-align: left;
+        }
+        .split-btn-menu button:hover { background: var(--vscode-list-hoverBackground); }
     </style>
 </head>
 <body>
@@ -1508,6 +1605,11 @@ ${autocompleteStyles}
                     <div class="autocomplete-list" id="autocompleteList"></div>
                 </div>
                 <div class="field-help" id="executionHelp"></div>
+                <div class="test-btn-row" id="execTestRow">
+                    <button class="btn btn-secondary btn-sm" id="btnTestExecution" title="Run this button's action">
+                        <span class="codicon codicon-play"></span> Test
+                    </button>
+                </div>
             </div>
 
             <!-- Terminal tabs (shown for TerminalCommand type) -->
@@ -1518,7 +1620,10 @@ ${autocompleteStyles}
                     </div>
                     <div class="terminal-tab-body" id="terminalTabBody">
                         <div>
-                            <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--vscode-descriptionForeground);margin-bottom:4px">Commands</label>
+                            <div class="terminal-command-header">
+                                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--vscode-descriptionForeground)">Commands</label>
+                                <div class="test-btn-row" id="terminalTabTestRow"></div>
+                            </div>
                             <textarea id="terminal-tab-commands" placeholder="npm run build&#10;echo done"></textarea>
                             <div class="field-help">Commands to run in this terminal, one per line</div>
                         </div>
@@ -2489,6 +2594,30 @@ ${sharedControlScript}
             const depEl  = document.getElementById('terminal-tab-dependent');
             if (cmdsEl) { cmdsEl.value = tab.commands || ''; }
             if (depEl)  { depEl.checked = tab.dependentOnPrevious || false; }
+            renderTerminalTabTestControl();
+        }
+
+        function renderTerminalTabTestControl() {
+            const row = document.getElementById('terminalTabTestRow');
+            if (!row) { return; }
+
+            if (currentTerminals.length > 1) {
+                row.innerHTML =
+                    '<div class="split-btn-group" id="terminalTestGroup">' +
+                    '<button class="btn btn-secondary btn-sm split-btn-primary" id="btnTestTab" title="Run the commands in this terminal tab">' +
+                    '<span class="codicon codicon-play"></span> Test</button>' +
+                    '<div style="position:relative">' +
+                    '<button class="btn btn-secondary btn-sm split-btn-arrow" id="btnTestTabArrow" title="More test options" aria-haspopup="true">' +
+                    '<span class="codicon codicon-chevron-down"></span></button>' +
+                    '<div class="split-btn-menu" id="terminalTestMenu" style="display:none">' +
+                    '<button id="btnTestAllTabs"><span class="codicon codicon-run-all"></span> Test All Tabs</button>' +
+                    '</div></div></div>';
+                return;
+            }
+
+            row.innerHTML =
+                '<button class="btn btn-secondary btn-sm" id="btnTestTab" title="Run the commands in this terminal tab">' +
+                '<span class="codicon codicon-play"></span> Test</button>';
         }
 
         function switchTerminalTab(index) {
@@ -2653,6 +2782,91 @@ ${sharedControlScript}
             startTabRename(activeTerminalTab);
             e.preventDefault();
             e.stopPropagation();
+        });
+
+        // ─── Test button logic ───
+        function buildButtonFromEditor() {
+            const type = document.getElementById('btn-type').value;
+            let executionText = '';
+            let terminals = undefined;
+            if (type === 'TerminalCommand') {
+                saveCurrentTerminalTab();
+                terminals = currentTerminals.map(t => Object.assign({}, t));
+            } else {
+                executionText = getExecutionInput().value.trim();
+            }
+            return {
+                id: document.getElementById('btn-id').value || '__test__',
+                name: document.getElementById('btn-name').value.trim() || 'Test',
+                type: type,
+                locality: document.getElementById('btn-locality').value,
+                description: document.getElementById('btn-description').value.trim(),
+                executionText: executionText,
+                terminals: terminals,
+                category: document.getElementById('btn-category').value.trim() || 'General',
+                icon: document.getElementById('btn-icon').value || 'play',
+                colour: '',
+                copilotModel: document.getElementById('btn-copilotModel').value.trim(),
+                copilotMode: document.getElementById('btn-copilotMode').value,
+                copilotAttachFiles: currentAttachFiles.slice(),
+                copilotAttachActiveFile: document.getElementById('btn-copilotAttachActiveFile').checked,
+                warnBeforeExecution: false,
+                userTokens: currentUserTokens.map(t => Object.assign({}, t))
+            };
+        }
+
+        function testCurrentTab() {
+            const btn = buildButtonFromEditor(); // also calls saveCurrentTerminalTab internally
+            btn.terminals = [Object.assign({}, currentTerminals[activeTerminalTab])];
+            closeTestDropdown();
+            vscode.postMessage({ type: 'testButton', button: btn });
+        }
+
+        function testAllTabs() {
+            const btn = buildButtonFromEditor();
+            closeTestDropdown();
+            vscode.postMessage({ type: 'testButton', button: btn });
+        }
+
+        function testExecution() {
+            const btn = buildButtonFromEditor();
+            vscode.postMessage({ type: 'testButton', button: btn });
+        }
+
+        function closeTestDropdown() {
+            const menu = document.getElementById('terminalTestMenu');
+            if (menu) { menu.style.display = 'none'; }
+        }
+
+        document.getElementById('terminalTabsGroup').addEventListener('click', (e) => {
+            const target = e.target;
+            if (!target || typeof target.closest !== 'function') { return; }
+
+            if (target.closest('#btnTestTab')) {
+                testCurrentTab();
+                return;
+            }
+
+            if (target.closest('#btnTestTabArrow')) {
+                e.stopPropagation();
+                const menu = document.getElementById('terminalTestMenu');
+                if (!menu) { return; }
+                menu.style.display = menu.style.display === 'none' ? '' : 'none';
+                return;
+            }
+
+            if (target.closest('#btnTestAllTabs')) {
+                testAllTabs();
+            }
+        });
+        document.getElementById('btnTestExecution').addEventListener('click', () => testExecution());
+
+        // Close test dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const t = e.target;
+            if (t && typeof t.closest === 'function' && !t.closest('#terminalTabTestRow')) {
+                closeTestDropdown();
+            }
         });
 
         // ─── Autocomplete ───

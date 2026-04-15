@@ -7,6 +7,9 @@ import { ButtonConfig, TerminalTab, SYSTEM_TOKENS } from './types';
 import { detectShellKind, shellEscape, ShellKind } from './utils';
 import { PromptActionService } from './promptActionService';
 
+const SHELL_INTEGRATION_DISCOVERY_TIMEOUT_MS = 3000;
+const TERMINAL_EXECUTION_LISTENER_TIMEOUT_MS = 30 * 60 * 1000;
+
 /** Snapshot of all resolvable values captured at invocation time */
 export interface TokenSnapshot {
     [tokenName: string]: string;
@@ -376,6 +379,15 @@ export class ButtonExecutor {
         return new Promise<boolean>((resolve) => {
             const terminal = vscode.window.createTerminal(`ButtonFu: ${button.name} — ${tab.name}`);
             terminal.show();
+            let settled = false;
+
+            const settle = (ok: boolean): void => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(ok);
+            };
 
             const sendLines = () => {
                 const lines = tab.commands.split(/\r?\n/);
@@ -393,10 +405,15 @@ export class ButtonExecutor {
                         const lines = tab.commands.split(/\r?\n/).filter((l: string) => l.trim());
                         const cmd = lines.join(' && ');
                         const exec = si.executeCommand(cmd);
+                        const safetyTimer = setTimeout(() => {
+                            disp.dispose();
+                            settle(true);
+                        }, TERMINAL_EXECUTION_LISTENER_TIMEOUT_MS);
                         const disp = vscode.window.onDidEndTerminalShellExecution((e) => {
                             if (e.execution === exec) {
                                 disp.dispose();
-                                resolve((e.exitCode ?? 0) === 0);
+                                clearTimeout(safetyTimer);
+                                settle((e.exitCode ?? 0) === 0);
                             }
                         });
                     } else {
@@ -417,16 +434,16 @@ export class ButtonExecutor {
                                     if (t === terminal) {
                                         closeDisp.dispose();
                                         clearTimeout(safetyTimer);
-                                        resolve(true);
+                                        settle(true);
                                     }
                                 });
                                 // Safety: dispose listener after 30 minutes to prevent indefinite leak
                                 const safetyTimer = setTimeout(() => {
                                     closeDisp.dispose();
-                                    resolve(true);
-                                }, 30 * 60 * 1000);
+                                    settle(true);
+                                }, TERMINAL_EXECUTION_LISTENER_TIMEOUT_MS);
                             }
-                        }, 3000);
+                        }, SHELL_INTEGRATION_DISCOVERY_TIMEOUT_MS);
                     }
                 };
                 tryExecute();
@@ -437,14 +454,14 @@ export class ButtonExecutor {
                     if (t === terminal) {
                         closeDisp.dispose();
                         clearTimeout(safetyTimer);
-                        resolve(true);
+                        settle(true);
                     }
                 });
                 // Safety: dispose listener after 30 minutes to prevent indefinite leak
                 const safetyTimer = setTimeout(() => {
                     closeDisp.dispose();
-                    resolve(true);
-                }, 30 * 60 * 1000);
+                    settle(true);
+                }, TERMINAL_EXECUTION_LISTENER_TIMEOUT_MS);
             }
         });
     }
@@ -466,7 +483,11 @@ export class ButtonExecutor {
 
                 try {
                     const args = JSON.parse(rawArgs);
-                    await vscode.commands.executeCommand(commandId, args);
+                    if (Array.isArray(args)) {
+                        await vscode.commands.executeCommand(commandId, ...args);
+                    } else {
+                        await vscode.commands.executeCommand(commandId, args);
+                    }
                 } catch {
                     await vscode.window.showWarningMessage(
                         `ButtonFu: Invalid JSON arguments for command "${commandId}". Executing without arguments.`

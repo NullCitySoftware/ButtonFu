@@ -5,6 +5,10 @@ import { NoteStore } from './noteStore';
 import { buildInfo } from './buildInfo';
 import { escapeAttribute, escapeHtml, getNonce } from './webviewControls';
 
+/** Restrict icon names to codicon-safe characters to prevent CSS class injection. */
+function sanitizeIconName(icon: string): string {
+    return icon.replace(/[^a-z0-9\-]/g, '');
+}
 interface SidebarItem {
     kind: 'button' | 'note';
     id: string;
@@ -78,6 +82,8 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
 
     private _view?: vscode.WebviewView;
     private _lastShellState?: string;
+    private readonly disposables: vscode.Disposable[] = [];
+    private readonly viewDisposables: vscode.Disposable[] = [];
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -85,8 +91,24 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         private readonly noteStore: NoteStore,
         private readonly globalState: vscode.Memento
     ) {
-        this.store.onDidChange(() => this.refresh());
-        this.noteStore.onDidChange(() => this.refresh());
+        this.disposables.push(this.store.onDidChange(() => this.refresh()));
+        this.disposables.push(this.noteStore.onDidChange(() => this.refresh()));
+    }
+
+    public dispose(): void {
+        this._view = undefined;
+        this.disposeViewBindings();
+        while (this.disposables.length > 0) {
+            const disposable = this.disposables.pop();
+            disposable?.dispose();
+        }
+    }
+
+    private disposeViewBindings(): void {
+        while (this.viewDisposables.length > 0) {
+            const disposable = this.viewDisposables.pop();
+            disposable?.dispose();
+        }
     }
 
     public resolveWebviewView(
@@ -94,11 +116,13 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ): void {
+        this.disposeViewBindings();
         this._view = webviewView;
 
-        webviewView.onDidDispose(() => {
+        this.viewDisposables.push(webviewView.onDidDispose(() => {
             this._view = undefined;
-        });
+            this.disposeViewBindings();
+        }));
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -111,7 +135,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this._getHtmlContent(webviewView.webview);
         this._lastShellState = this._getShellState();
 
-        webviewView.webview.onDidReceiveMessage(async (msg) => {
+        this.viewDisposables.push(webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'execute':
                     await vscode.commands.executeCommand('buttonfu.executeButton', msg.id);
@@ -153,7 +177,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
                     await vscode.commands.executeCommand('buttonfu.deleteNoteNode', msg.id);
                     break;
             }
-        });
+        }));
     }
 
     public refresh(): void {
@@ -189,7 +213,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         const showNotes = vscode.workspace.getConfiguration('buttonfu').get<boolean>('showNotes', true);
         const bodyPadding = showFooter ? '8px 6px 120px' : '8px 6px 8px';
         const debugStampHtml = showBuildInfo
-            ? `<div class="debug-stamp">RUNNING BUILD: ${renderStamp}</div>`
+            ? `<div class="debug-stamp">RUNNING BUILD: ${escapeHtml(renderStamp)}</div>`
             : '';
         const footerHtml = showFooter
             ? this._renderFooter(showNotes)
@@ -820,26 +844,26 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private _renderButton(button: ButtonConfig): string {
-        const icon = button.icon || 'play';
+        const icon = sanitizeIconName(button.icon || 'play');
         const tooltip = escapeHtml(button.description || button.name);
         const style = this._buildItemStyle(button.colour);
 
         return `<button class="fu-btn" data-execute="${escapeAttribute(button.id)}" title="${tooltip}" aria-label="${tooltip}"${style ? ` style="${style}"` : ''}>
-                <span class="codicon codicon-${escapeHtml(icon)} btn-icon"></span>
+                <span class="codicon codicon-${icon} btn-icon"></span>
                 <span class="btn-label">${escapeHtml(button.name)}</span>
             </button>`;
     }
 
     private _renderNoteButton(note: NoteConfig): string {
         const escapedId = escapeAttribute(note.id);
-        const icon = note.icon || getDefaultNoteIcon();
+        const icon = sanitizeIconName(note.icon || getDefaultNoteIcon());
         const tooltip = escapeAttribute(this._buildNoteTooltip(note));
         const style = this._buildItemStyle(note.colour);
         const menuTitle = escapeAttribute(`More note actions for ${note.name}`);
 
         return `<div class="fu-note-split" id="note-split-${escapedId}"${style ? ` style="${style}"` : ''}>
                 <button class="fu-note-main" id="note-run-${escapedId}" data-note-execute="${escapedId}" title="${tooltip}" aria-label="${tooltip}">
-                    <span class="codicon codicon-${escapeHtml(icon)} btn-icon"></span>
+                    <span class="codicon codicon-${icon} btn-icon"></span>
                     <span class="btn-label">${escapeHtml(note.name)}</span>
                 </button>
                 <button class="fu-note-toggle" id="note-menu-${escapedId}" data-note-menu-toggle="${escapedId}" data-note-format="${escapeAttribute(note.format)}" aria-haspopup="menu" aria-expanded="false" title="${menuTitle}">

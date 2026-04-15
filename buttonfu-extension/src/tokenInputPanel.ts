@@ -30,6 +30,7 @@ interface UsedSystemToken {
 export class TokenInputPanel {
     private readonly panel: vscode.WebviewPanel;
     private readonly disposables: vscode.Disposable[] = [];
+    private isDisposed = false;
 
     constructor(
         private readonly button: ButtonConfig,
@@ -66,7 +67,10 @@ export class TokenInputPanel {
     }
 
     private dispose(): void {
-        this.panel.dispose();
+        if (this.isDisposed) {
+            return;
+        }
+        this.isDisposed = true;
         while (this.disposables.length) {
             const d = this.disposables.pop();
             if (d) { d.dispose(); }
@@ -85,8 +89,12 @@ export class TokenInputPanel {
                 for (const rt of this.resolvedUserTokens) {
                     userValues[rt.token.toLowerCase()] = rt.value;
                 }
-                await this.executor.executeWithTokens(this.button, this.systemSnap, userValues);
-                this.panel.dispose();
+                try {
+                    await this.executor.executeWithTokens(this.button, this.systemSnap, userValues);
+                    this.panel.dispose();
+                } catch (err) {
+                    vscode.window.showErrorMessage(`ButtonFu: Failed to execute button — ${err}`);
+                }
                 break;
             }
             case 'cancel':
