@@ -49,7 +49,7 @@ For example: `bin\publish\ButtonFu_1.1.2.exe`
 
 The installer version is sourced from:
 
-- `buttonfu-extension/package.json` → Extension and installer version (for example `1.1.1`)
+- `buttonfu-extension/package.json` → Extension and installer version (for example `1.1.2`)
 
 Update it before packaging with:
 

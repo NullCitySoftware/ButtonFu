@@ -34,8 +34,6 @@ const GET_BRIDGE_CONTEXT_METHOD = 'buttonfu.api.getBridgeContext';
 const LIST_BRIDGES_METHOD = 'buttonfu.api.listBridges';
 const BRIDGE_DISCOVERY_VERSION = 3;
 const HEARTBEAT_INTERVAL_MS = 30_000;
-
-/** Only these VS Code commands may be called through the bridge. */
 const ALLOWED_METHODS: ReadonlySet<string> = new Set([
     'buttonfu.api.createButton',
     'buttonfu.api.getButton',
@@ -54,7 +52,7 @@ const MAX_CONNECTIONS = 3;
 const RATE_WINDOW_MS = 60_000;              // 60 s
 const RATE_MAX_REQUESTS = 60;               // per connection per window
 const AUTH_TOKEN_BYTES = 32;                // 256-bit token
-const STALE_BRIDGE_AGE_MS = 120_000;        // 2 min with no heartbeat = stale
+export const STALE_BRIDGE_AGE_MS = 120_000; // 2 min with no heartbeat = stale
 const WORKSPACE_MISMATCH_ERROR = -32003;
 
 // JSON-RPC 2.0 error codes
@@ -226,8 +224,10 @@ function authTokensMatch(providedToken: string, expectedToken: string): boolean 
     const providedBuf = Buffer.alloc(expectedBuf.length);
     providedRaw.copy(providedBuf, 0, 0, expectedBuf.length);
 
+    // Evaluate both conditions before combining to avoid short-circuit timing leaks.
+    const lenMatch = providedRaw.length === expectedBuf.length;
     const tokensMatch = crypto.timingSafeEqual(providedBuf, expectedBuf);
-    return tokensMatch && providedRaw.length === expectedBuf.length;
+    return tokensMatch && lenMatch;
 }
 
 function buildBridgeInfo(
@@ -516,9 +516,17 @@ export class AgentBridge {
         this.connections.add(socket);
         this.connectionRates.set(socket, []);
 
+        // Destroy sockets that connect but never send data within 30 s to prevent
+        // slot exhaustion from idle connections.
+        socket.setTimeout(30_000);
+        socket.on('timeout', () => { socket.destroy(); });
+
         let buffer = '';
 
         socket.on('data', (chunk: Buffer) => {
+            // First data received — cancel the idle-connection timeout.
+            socket.setTimeout(0);
+
             buffer += chunk.toString('utf-8');
 
             if (Buffer.byteLength(buffer, 'utf-8') > MAX_MESSAGE_BYTES) {

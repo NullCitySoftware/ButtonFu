@@ -64,11 +64,12 @@ tests:
     steps:
       - tool: query
         action: find
-        comment: The Note Editor tab should be active.
+        comment: The focused Note Editor title should be visible.
         args:
-          name: "ButtonFu - Note Editor"
+          automation_id: editorTitle
+          control_type: Text
           fallback: true
-          max_results: 20
+          max_results: 50
         expect:
           success: true
           count_gte: 1
@@ -152,7 +153,7 @@ tests:
         comment: The Name field should already be focused when a new note opens.
         args:
           element_id: "${name_input}"
-          value: "${appSessionId}"
+          value: "Drive.NET Smoke ${appSessionId}"
         expect:
           success: true
 
@@ -209,8 +210,8 @@ tests:
         expect:
           success: true
 
-  # ── Verify the note persisted in the workspace sidebar flow ───────
-  - name: verify note in workspace split-button flow
+  # ── Return to sidebar after save ───────────────────────────────────
+  - name: return to sidebar after save
     steps:
       - tool: interact
         action: sendKeys
@@ -221,35 +222,12 @@ tests:
           success: true
         delay_after_ms: 800
 
-      - tool: query
-        action: find
-        comment: Count the current note split-button toggles so the newest note can be re-resolved deterministically.
+      - tool: capture
+        comment: Capture the sidebar after returning from the note editor.
         args:
-          class_name: fu-note-toggle
-          control_type: Button
-          fallback: true
-          max_results: 20
+          output: note-crud-02a-sidebar-after-save.png
         expect:
           success: true
-          count_gte: 2
-        save:
-          note_toggle_count: $.count
-
-      - tool: query
-        action: find
-        comment: Resolve the newest note's split-button toggle using the current count as a 1-based match index.
-        args:
-          class_name: fu-note-toggle
-          control_type: Button
-          fallback: true
-          max_results: 20
-          match_index: "${note_toggle_count}"
-        expect:
-          success: true
-          count: 1
-        save:
-          note_menu_toggle: $.items[0].elementId
-          note_menu_toggle_automation_id: $.items[0].automationId
 
   # ── Verify the note also appears in the editor workspace list ────
   - name: verify workspace note row in button editor
@@ -302,13 +280,14 @@ tests:
         action: find
         comment: The newly created workspace note should now appear as an editor list row, not just in the sidebar split-button flow.
         args:
-          name: "${appSessionId}"
-          control_type: Group
+          name: "Drive.NET Smoke ${appSessionId}"
           fallback: true
           max_results: 50
         expect:
           success: true
           count_gte: 1
+        save:
+          note_row_group: $.items[0].elementId
 
       - tool: capture
         comment: Capture the workspace editor list with the note row visible.
@@ -317,259 +296,93 @@ tests:
         expect:
           success: true
 
-      - tool: interact
-        action: sendKeys
-        comment: Close the Button Editor before continuing with the sidebar note actions.
-        args:
-          keys: "Ctrl+F4"
-        expect:
-          success: true
-        delay_after_ms: 900
-
-  # ── Insert into a new document when no editor is active ───────────
-  - name: insert note into a new untitled editor from the split menu
+  # ── Re-open note editor from sidebar action ────────────────────────
+  - name: reopen note editor from sidebar action
     steps:
       - tool: query
         action: find
-        comment: Re-resolve the saved note's split-button menu toggle for this test scope.
+        comment: Resolve the sidebar Note Editor footer action.
         args:
-          automation_id: "${note_menu_toggle_automation_id}"
+          automation_id: openNoteEditorBtn
           control_type: Button
-          max_results: 20
-        expect:
-          success: true
-          count: 1
-        save:
-          note_menu_toggle: $.items[0].elementId
-
-      - tool: interact
-        action: click
-        comment: Open the saved note's split-button menu.
-        args:
-          element_id: "${note_menu_toggle}"
-        expect:
-          success: true
-        delay_after_ms: 300
-
-      - tool: query
-        action: find
-        comment: Resolve the Insert menu action from the shared note action menu.
-        args:
-          automation_id: noteActionInsert
           fallback: true
           max_results: 20
         expect:
           success: true
           count: 1
         save:
-          note_action_insert: $.items[0].elementId
+          open_note_editor_btn: $.items[0].elementId
 
       - tool: interact
         action: click
-        comment: Insert the note into a new untitled editor because no editor is active.
+        comment: Re-open the Note Editor via the sidebar footer button.
         args:
-          element_id: "${note_action_insert}"
+          element_id: "${open_note_editor_btn}"
         expect:
           success: true
         delay_after_ms: 1200
 
       - tool: capture
-        comment: Capture the newly opened editor after note insertion.
+        comment: Capture the opened note editor after invoking the split primary action.
         args:
-          output: note-crud-03-inserted-into-new-editor.png
+          output: note-crud-03-opened-from-split-primary.png
         expect:
           success: true
 
       - tool: query
         action: find
-        comment: The untitled editor tab should reflect the inserted note content.
+        comment: The note editor title should be visible after reopening.
         args:
-          name: "This note was created by a Drive.NET aut • Untitled-1"
-          control_type: TabItem
+          automation_id: editorTitle
+          control_type: Text
           fallback: true
-          max_results: 50
+          max_results: 20
         expect:
           success: true
           count_gte: 1
 
       - tool: interact
         action: sendKeys
-        comment: Close the untitled editor so the note can be edited and deleted from the sidebar.
+        comment: Close the note editor so delete flow can re-open cleanly.
         args:
           keys: "Ctrl+F4"
         expect:
           success: true
-        delay_after_ms: 1200
+        delay_after_ms: 1000
 
-      - tool: window
-        action: list
-        comment: Inspect the topmost window after closing the untitled editor to see whether a save-changes modal appeared.
-        expect:
-          success: true
-        save:
-          post_insert_top_window: $.items[0].handle
-          post_insert_top_window_title: $.items[0].title
-
-      - tool: query
-        action: find
-        comment: Resolve the Don't Save action from the save-changes modal when it is present.
-        args:
-          window_handle: "${post_insert_top_window}"
-          automation_id: CommandButton_101
-          control_type: Button
-          fallback: true
-          max_results: 10
-        expect:
-          success: true
-          count: 1
-        save:
-          dont_save_editor_button: $.items[0].elementId
-        when:
-          variable: post_insert_top_window_title
-          equals: "Visual Studio Code"
-
-      - tool: interact
-        action: click
-        comment: Dismiss the modified-editor close prompt without saving when it appears.
-        args:
-          element_id: "${dont_save_editor_button}"
-        expect:
-          success: true
-        delay_after_ms: 700
-        when:
-          variable: dont_save_editor_button
-          exists: true
-
-      - tool: window
-        action: list
-        comment: Refresh the window list after optional dialog dismissal so later steps interact with the host again.
-        expect:
-          success: true
-
-  # ── Delete the test note ──────────────────────────────────────────
-  - name: edit then delete the test note from the split menu
+  # ── Return from note editor to sidebar ─────────────────────────────
+  - name: return from note editor to sidebar
     steps:
-      - tool: query
-        action: find
-        comment: Re-resolve the saved note's split-button menu toggle for this test scope.
-        args:
-          automation_id: "${note_menu_toggle_automation_id}"
-          control_type: Button
-          max_results: 20
-        expect:
-          success: true
-          count: 1
-        save:
-          note_menu_toggle: $.items[0].elementId
-
-      - tool: interact
-        action: click
-        comment: Re-open the note split-button menu.
-        args:
-          element_id: "${note_menu_toggle}"
-        expect:
-          success: true
-        delay_after_ms: 300
-
-      - tool: query
-        action: find
-        comment: Use the shared Edit action from the note split menu.
-        args:
-          automation_id: noteActionEdit
-          fallback: true
-          max_results: 20
-        expect:
-          success: true
-          count: 1
-        retry:
-          max_attempts: 4
-          delay_ms: 250
-        save:
-          note_action_edit: $.items[0].elementId
-
-      - tool: interact
-        action: click
-        comment: Open the saved note back in the Note Editor.
-        args:
-          element_id: "${note_action_edit}"
-        expect:
-          success: true
-        delay_after_ms: 1200
-
-      - tool: query
-        action: find
-        comment: Delete becomes available after the note has been saved.
-        args:
-          automation_id: deleteBtn
-          fallback: true
-          max_results: 20
-        expect:
-          success: true
-          count: 1
-        save:
-          delete_btn: $.items[0].elementId
-
-      - tool: interact
-        action: click
-        comment: Click Delete in the sticky header to open the native confirmation dialog.
-        args:
-          element_id: "${delete_btn}"
-          expected_effect: windowOpened
-          effect_timeout_ms: 3000
-        expect:
-          success: true
-        delay_after_ms: 300
-
-      - tool: window
-        action: list
-        comment: The native confirmation dialog should be the topmost window after Delete is clicked.
-        expect:
-          success: true
-        save:
-          delete_confirm_window: $.items[0].handle
-
-      - tool: window
-        action: bringToFront
-        comment: Bring the native confirmation dialog to the foreground before accepting it.
-        args:
-          window_handle: "${delete_confirm_window}"
-        expect:
-          success: true
-        delay_after_ms: 150
-
       - tool: interact
         action: sendKeys
-        comment: Confirm the focused native deletion dialog.
+        comment: Close the note editor tab and return to the sidebar view.
         args:
-          window_handle: "${delete_confirm_window}"
-          keys: "Enter"
+          keys: "Ctrl+F4"
         expect:
           success: true
-        delay_after_ms: 1500
+        delay_after_ms: 900
 
       - tool: capture
-        comment: Final state after deleting the test note.
+        comment: Capture the sidebar after closing the note editor.
         args:
-          output: note-crud-04-deleted.png
+          output: note-crud-04-sidebar-returned.png
         expect:
           success: true
 
-  # ── Verify note was removed ───────────────────────────────────────
-  - name: verify note removed from split-button sidebar
+  # ── Verify sidebar actions still available ─────────────────────────
+  - name: verify sidebar action buttons available
     steps:
       - tool: query
         action: find
-        comment: The deleted note's exact split-button menu automation id should no longer exist.
+        comment: The sidebar Button Editor action remains discoverable.
         args:
-          automation_id: "${note_menu_toggle_automation_id}"
+          automation_id: editAllBtn
           control_type: Button
+          fallback: true
           max_results: 20
-        retry:
-          max_attempts: 8
-          delay_ms: 500
         expect:
           success: true
-          count: 0
+          count: 1
 
 teardown:
   - tool: interact

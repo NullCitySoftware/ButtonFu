@@ -67,8 +67,12 @@ export class PromptTokenInputPanel {
                 for (const token of this.request.resolvedUserTokens) {
                     userValues[token.token.toLowerCase()] = token.value;
                 }
-                await this.request.onExecute(userValues);
-                this.panel.dispose();
+                try {
+                    await this.request.onExecute(userValues);
+                    this.panel.dispose();
+                } catch (err) {
+                    vscode.window.showErrorMessage(`ButtonFu: Failed to execute — ${err}`);
+                }
                 break;
             }
             case 'cancel':

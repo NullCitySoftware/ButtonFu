@@ -5,6 +5,10 @@ import { NoteStore } from './noteStore';
 import { buildInfo } from './buildInfo';
 import { escapeAttribute, escapeHtml, getNonce } from './webviewControls';
 
+/** Restrict icon names to codicon-safe characters to prevent CSS class injection. */
+function sanitizeIconName(icon: string): string {
+    return icon.replace(/[^a-z0-9\-]/g, '');
+}
 interface SidebarItem {
     kind: 'button' | 'note';
     id: string;
@@ -15,6 +19,71 @@ interface SidebarItem {
     colour: string;
     tooltip: string;
     data: ButtonConfig | NoteConfig;
+}
+
+function isLikelyOpaqueIdLabel(name: string): boolean {
+    const value = name.trim();
+    if (!value) {
+        return true;
+    }
+
+    if (/^[a-f0-9]{32}$/i.test(value)) {
+        return true;
+    }
+
+    if (/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value)) {
+        return true;
+    }
+
+    return false;
+}
+
+function truncateLabel(value: string, maxLength = 48): string {
+    if (value.length <= maxLength) {
+        return value;
+    }
+
+    return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function getFallbackNoteName(note: NoteConfig): string {
+    const firstLine = note.content
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+
+    if (firstLine) {
+        return truncateLabel(firstLine);
+    }
+
+    return 'Untitled Note';
+}
+
+function getFallbackButtonName(button: ButtonConfig): string {
+    const description = button.description?.trim();
+    if (description) {
+        return truncateLabel(description);
+    }
+
+    const execution = button.executionText?.trim();
+    if (execution) {
+        return truncateLabel(execution);
+    }
+
+    return 'Untitled Button';
+}
+
+function getSidebarItemDisplayName(item: SidebarItem): string {
+    const rawName = item.name?.trim() ?? '';
+    if (rawName && !isLikelyOpaqueIdLabel(rawName)) {
+        return rawName;
+    }
+
+    if (item.kind === 'note') {
+        return getFallbackNoteName(item.data as NoteConfig);
+    }
+
+    return getFallbackButtonName(item.data as ButtonConfig);
 }
 
 function getHexBase(hex: string): string {
@@ -57,7 +126,7 @@ function getContrastColour(hex: string): string {
     return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 > 0.55 ? '#000000' : '#ffffff';
 }
 
-function lightenHex(hex: string, amount: number): string {
+function darkenHex(hex: string, amount: number): string {
     const clamp = (value: number) => Math.max(0, Math.min(255, value));
     const base = getHexBase(hex);
     const alphaSuffix = getHexAlpha(hex);
@@ -65,9 +134,9 @@ function lightenHex(hex: string, amount: number): string {
     const green = parseInt(base.slice(3, 5), 16);
     const blue = parseInt(base.slice(5, 7), 16);
 
-    const nextRed = clamp(Math.round(red + (255 - red) * amount));
-    const nextGreen = clamp(Math.round(green + (255 - green) * amount));
-    const nextBlue = clamp(Math.round(blue + (255 - blue) * amount));
+    const nextRed = clamp(Math.round(red * (1 - amount)));
+    const nextGreen = clamp(Math.round(green * (1 - amount)));
+    const nextBlue = clamp(Math.round(blue * (1 - amount)));
 
     return `#${nextRed.toString(16).padStart(2, '0')}${nextGreen.toString(16).padStart(2, '0')}${nextBlue.toString(16).padStart(2, '0')}${alphaSuffix}`;
 }
@@ -78,6 +147,8 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
 
     private _view?: vscode.WebviewView;
     private _lastShellState?: string;
+    private readonly disposables: vscode.Disposable[] = [];
+    private readonly viewDisposables: vscode.Disposable[] = [];
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -85,8 +156,24 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         private readonly noteStore: NoteStore,
         private readonly globalState: vscode.Memento
     ) {
-        this.store.onDidChange(() => this.refresh());
-        this.noteStore.onDidChange(() => this.refresh());
+        this.disposables.push(this.store.onDidChange(() => this.refresh()));
+        this.disposables.push(this.noteStore.onDidChange(() => this.refresh()));
+    }
+
+    public dispose(): void {
+        this._view = undefined;
+        this.disposeViewBindings();
+        while (this.disposables.length > 0) {
+            const disposable = this.disposables.pop();
+            disposable?.dispose();
+        }
+    }
+
+    private disposeViewBindings(): void {
+        while (this.viewDisposables.length > 0) {
+            const disposable = this.viewDisposables.pop();
+            disposable?.dispose();
+        }
     }
 
     public resolveWebviewView(
@@ -94,11 +181,13 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ): void {
+        this.disposeViewBindings();
         this._view = webviewView;
 
-        webviewView.onDidDispose(() => {
+        this.viewDisposables.push(webviewView.onDidDispose(() => {
             this._view = undefined;
-        });
+            this.disposeViewBindings();
+        }));
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -111,7 +200,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this._getHtmlContent(webviewView.webview);
         this._lastShellState = this._getShellState();
 
-        webviewView.webview.onDidReceiveMessage(async (msg) => {
+        this.viewDisposables.push(webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'execute':
                     await vscode.commands.executeCommand('buttonfu.executeButton', msg.id);
@@ -153,7 +242,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
                     await vscode.commands.executeCommand('buttonfu.deleteNoteNode', msg.id);
                     break;
             }
-        });
+        }));
     }
 
     public refresh(): void {
@@ -189,7 +278,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         const showNotes = vscode.workspace.getConfiguration('buttonfu').get<boolean>('showNotes', true);
         const bodyPadding = showFooter ? '8px 6px 120px' : '8px 6px 8px';
         const debugStampHtml = showBuildInfo
-            ? `<div class="debug-stamp">RUNNING BUILD: ${renderStamp}</div>`
+            ? `<div class="debug-stamp">RUNNING BUILD: ${escapeHtml(renderStamp)}</div>`
             : '';
         const footerHtml = showFooter
             ? this._renderFooter(showNotes)
@@ -301,7 +390,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         .fu-note-split {
             --fu-item-bg: var(--vscode-button-secondaryBackground);
             --fu-item-fg: var(--vscode-button-secondaryForeground);
-            --fu-item-hover-bg: var(--vscode-button-secondaryHoverBackground);
+            --fu-item-hover-bg: color-mix(in srgb, var(--fu-item-bg) 86%, black 14%);
         }
 
         .fu-btn {
@@ -318,11 +407,11 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
             font-family: var(--vscode-font-family);
             white-space: nowrap;
             max-width: 220px;
-            transition: background 0.1s, border-color 0.1s;
+            transition: background 0.1s;
         }
         .fu-btn:hover {
             background: var(--fu-item-hover-bg);
-            border-color: var(--vscode-focusBorder);
+            border-color: transparent;
         }
 
         .fu-note-split {
@@ -334,12 +423,12 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
             overflow: hidden;
             background: var(--fu-item-bg);
             color: var(--fu-item-fg);
-            transition: background 0.1s, border-color 0.1s;
+            transition: background 0.1s;
         }
         .fu-note-split:hover,
         .fu-note-split.menu-open {
             background: var(--fu-item-hover-bg);
-            border-color: var(--vscode-focusBorder);
+            border-color: transparent;
         }
 
         .fu-note-main,
@@ -784,7 +873,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
                 return order;
             }
 
-            return left.name.localeCompare(right.name);
+            return getSidebarItemDisplayName(left).localeCompare(getSidebarItemDisplayName(right));
         });
 
         const categories = new Map<string, SidebarItem[]>();
@@ -820,27 +909,49 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private _renderButton(button: ButtonConfig): string {
-        const icon = button.icon || 'play';
-        const tooltip = escapeHtml(button.description || button.name);
+        const icon = sanitizeIconName(button.icon || 'play');
+        const displayName = getSidebarItemDisplayName({
+            kind: 'button',
+            id: button.id,
+            name: button.name,
+            category: button.category || 'General',
+            sortOrder: button.sortOrder,
+            icon: button.icon,
+            colour: button.colour,
+            tooltip: button.description || button.name,
+            data: button
+        });
+        const tooltip = escapeHtml(button.description || displayName);
         const style = this._buildItemStyle(button.colour);
 
         return `<button class="fu-btn" data-execute="${escapeAttribute(button.id)}" title="${tooltip}" aria-label="${tooltip}"${style ? ` style="${style}"` : ''}>
-                <span class="codicon codicon-${escapeHtml(icon)} btn-icon"></span>
-                <span class="btn-label">${escapeHtml(button.name)}</span>
+                <span class="codicon codicon-${icon} btn-icon"></span>
+                <span class="btn-label">${escapeHtml(displayName)}</span>
             </button>`;
     }
 
     private _renderNoteButton(note: NoteConfig): string {
         const escapedId = escapeAttribute(note.id);
-        const icon = note.icon || getDefaultNoteIcon();
+        const displayName = getSidebarItemDisplayName({
+            kind: 'note',
+            id: note.id,
+            name: note.name,
+            category: note.category || 'General',
+            sortOrder: note.sortOrder,
+            icon: note.icon,
+            colour: note.colour,
+            tooltip: this._buildNoteTooltip(note),
+            data: note
+        });
+        const icon = sanitizeIconName(note.icon || getDefaultNoteIcon());
         const tooltip = escapeAttribute(this._buildNoteTooltip(note));
         const style = this._buildItemStyle(note.colour);
-        const menuTitle = escapeAttribute(`More note actions for ${note.name}`);
+        const menuTitle = escapeAttribute(`More note actions for ${displayName}`);
 
         return `<div class="fu-note-split" id="note-split-${escapedId}"${style ? ` style="${style}"` : ''}>
                 <button class="fu-note-main" id="note-run-${escapedId}" data-note-execute="${escapedId}" title="${tooltip}" aria-label="${tooltip}">
-                    <span class="codicon codicon-${escapeHtml(icon)} btn-icon"></span>
-                    <span class="btn-label">${escapeHtml(note.name)}</span>
+                    <span class="codicon codicon-${icon} btn-icon"></span>
+                    <span class="btn-label">${escapeHtml(displayName)}</span>
                 </button>
                 <button class="fu-note-toggle" id="note-menu-${escapedId}" data-note-menu-toggle="${escapedId}" data-note-format="${escapeAttribute(note.format)}" aria-haspopup="menu" aria-expanded="false" title="${menuTitle}">
                     <span class="codicon codicon-chevron-down"></span>
@@ -897,7 +1008,7 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         }
 
         const foreground = getContrastColour(validHex);
-        const hover = lightenHex(validHex, 0.18);
+        const hover = darkenHex(validHex, 0.16);
         return `--fu-item-bg:${validHex};--fu-item-fg:${foreground};--fu-item-hover-bg:${hover};`;
     }
 }

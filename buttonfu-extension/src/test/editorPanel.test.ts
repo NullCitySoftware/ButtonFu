@@ -263,3 +263,137 @@ test('button editor keeps button rows ahead of note rows when mixed items share 
         panel.dispose();
     }
 });
+test('testButton message is forwarded to the executeButtonTest callback with a sanitised ButtonConfig', async () => {
+    const harness = createFakeVscodeHarness();
+    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
+    const editorPanelModulePath = path.resolve(__dirname, '..', 'editorPanel.js');
+    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
+    const editorPanelModule = loadWithPatchedVscode<{ ButtonEditorPanel: any }>(editorPanelModulePath, harness.vscode);
+    const context = harness.createExtensionContext();
+    const store = new buttonStoreModule.ButtonStore(context);
+
+    const calls: any[] = [];
+    editorPanelModule.ButtonEditorPanel.configure(context.globalState, () => undefined, async (btn: any) => {
+        calls.push(btn);
+    });
+    editorPanelModule.ButtonEditorPanel.createOrShow(store, context.extensionUri);
+
+    const panel = harness.webviewPanels[0];
+    assert.ok(panel, 'Expected a webview panel to be created.');
+
+    try {
+        await panel.sendMessage({
+            type: 'testButton',
+            button: {
+                id: 'test-id',
+                name: 'My Button',
+                type: 'TerminalCommand',
+                terminals: [{ name: 'Tab 1', commands: 'echo hello', dependentOnPrevious: false }],
+                executionText: '',
+                copilotModel: 'gpt-4',
+                copilotMode: 'ask',
+                copilotAttachFiles: ['file.ts'],
+                copilotAttachActiveFile: true,
+                warnBeforeExecution: true,
+                userTokens: []
+            }
+        });
+    } finally {
+        panel.dispose();
+    }
+
+    assert.equal(calls.length, 1, 'Expected executeButtonTest to be called once.');
+    const btn = calls[0];
+    assert.equal(btn.type, 'TerminalCommand');
+    assert.equal(btn.name, 'My Button');
+    assert.deepEqual(btn.terminals, [{ name: 'Tab 1', commands: 'echo hello', dependentOnPrevious: false }]);
+    assert.equal(btn.warnBeforeExecution, false, 'warnBeforeExecution must be suppressed for test runs from the editor.');
+    assert.equal(btn.copilotModel, 'gpt-4');
+    assert.equal(btn.copilotMode, 'ask');
+    assert.deepEqual(btn.copilotAttachFiles, ['file.ts']);
+    assert.equal(btn.copilotAttachActiveFile, true);
+});
+
+test('testButton message is ignored when the button type is invalid', async () => {
+    const harness = createFakeVscodeHarness();
+    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
+    const editorPanelModulePath = path.resolve(__dirname, '..', 'editorPanel.js');
+    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
+    const editorPanelModule = loadWithPatchedVscode<{ ButtonEditorPanel: any }>(editorPanelModulePath, harness.vscode);
+    const context = harness.createExtensionContext();
+    const store = new buttonStoreModule.ButtonStore(context);
+
+    const calls: any[] = [];
+    editorPanelModule.ButtonEditorPanel.configure(context.globalState, () => undefined, async (btn: any) => {
+        calls.push(btn);
+    });
+    editorPanelModule.ButtonEditorPanel.createOrShow(store, context.extensionUri);
+
+    const panel = harness.webviewPanels[0];
+    assert.ok(panel, 'Expected a webview panel to be created.');
+
+    try {
+        await panel.sendMessage({ type: 'testButton', button: { type: 'EvilType', name: 'x' } });
+    } finally {
+        panel.dispose();
+    }
+
+    assert.equal(calls.length, 0, 'executeButtonTest must not be called for an invalid type.');
+});
+
+test('button editor webview renders terminal test controls above Commands and switches between plain and split modes by tab count', () => {
+    const harness = createFakeVscodeHarness();
+    const buttonStoreModulePath = path.resolve(__dirname, '..', 'buttonStore.js');
+    const editorPanelModulePath = path.resolve(__dirname, '..', 'editorPanel.js');
+    const buttonStoreModule = loadWithPatchedVscode<{ ButtonStore: new (context: any) => any }>(buttonStoreModulePath, harness.vscode);
+    const editorPanelModule = loadWithPatchedVscode<{ ButtonEditorPanel: any }>(editorPanelModulePath, harness.vscode);
+    const context = harness.createExtensionContext();
+    const store = new buttonStoreModule.ButtonStore(context);
+
+    editorPanelModule.ButtonEditorPanel.configure(context.globalState, () => undefined);
+    editorPanelModule.ButtonEditorPanel.createOrShow(store, context.extensionUri);
+
+    const panel = harness.webviewPanels[0];
+    assert.ok(panel, 'Expected a webview panel to be created.');
+
+    assert.match(panel.panel.webview.html, /class="terminal-command-header"[\s\S]*id="terminalTabTestRow"[\s\S]*id="terminal-tab-commands"/, 'Expected the terminal test control row to render above the Commands textbox.');
+    assert.match(panel.panel.webview.html, /id="btnTestExecution"/, 'Expected the Test button for the execution group to be present.');
+
+    const runtime = executeWebviewScripts(panel.panel.webview.html);
+
+    const oneTab = createDefaultButton('Global');
+    oneTab.id = 'one-tab';
+    oneTab.name = 'One Tab';
+    oneTab.type = 'TerminalCommand';
+    oneTab.terminals = [{ name: 'Terminal 1', commands: 'echo one', dependentOnPrevious: false }];
+
+    const twoTabs = createDefaultButton('Global');
+    twoTabs.id = 'two-tabs';
+    twoTabs.name = 'Two Tabs';
+    twoTabs.type = 'TerminalCommand';
+    twoTabs.terminals = [
+        { name: 'Terminal 1', commands: 'echo one', dependentOnPrevious: false },
+        { name: 'Terminal 2', commands: 'echo two', dependentOnPrevious: false }
+    ];
+
+    runtime.dispatchMessage({
+        type: 'refreshButtons',
+        buttons: [oneTab, twoTabs],
+        notes: [],
+        keybindings: {},
+        workspaceName: 'TestWorkspace'
+    });
+
+    runtime.dispatchMessage({ type: 'editButton', buttonId: oneTab.id });
+    const rowOne = runtime.document.getElementById('terminalTabTestRow')?.innerHTML ?? '';
+    assert.match(rowOne, /id="btnTestTab"/, 'Expected plain Test button for a single tab.');
+    assert.doesNotMatch(rowOne, /id="btnTestTabArrow"/, 'Split-button arrow must not render for a single tab.');
+
+    runtime.dispatchMessage({ type: 'editButton', buttonId: twoTabs.id });
+    const rowTwo = runtime.document.getElementById('terminalTabTestRow')?.innerHTML ?? '';
+    assert.match(rowTwo, /id="btnTestTab"/, 'Expected Test primary button for multiple tabs.');
+    assert.match(rowTwo, /id="btnTestTabArrow"/, 'Expected split-button arrow for multiple tabs.');
+    assert.match(rowTwo, /id="btnTestAllTabs"/, 'Expected Test All Tabs action for multiple tabs.');
+
+    panel.dispose();
+});

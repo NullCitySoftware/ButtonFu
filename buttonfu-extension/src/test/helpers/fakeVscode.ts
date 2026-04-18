@@ -141,11 +141,13 @@ export interface FakeVscodeHarness {
     readonly statusBarMessages: Array<{ text: string; timeout?: number }>;
     readonly warningMessages: string[];
     readonly errorMessages: string[];
+    readonly executedTasks: unknown[];
     readonly quickPickCalls: Array<{ items: unknown[]; options: unknown }>;
     queueQuickPickResult(result: unknown): void;
     queueWarningMessageResult(result: unknown): void;
     setExternalCommandHandler(command: string, handler: CommandHandler): void;
     setClipboardText(text: string): void;
+    setTasks(tasks: unknown[]): void;
     setWorkspaceFolders(folders: Array<{ name: string; fsPath: string }>, options?: { name?: string; fireEvent?: boolean }): void;
     setWorkspaceTrust(isTrusted: boolean): void;
     setExtensionMode(mode: number): void;
@@ -189,6 +191,7 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
     const statusBarMessages: Array<{ text: string; timeout?: number }> = [];
     const warningMessages: string[] = [];
     const errorMessages: string[] = [];
+    const executedTasks: unknown[] = [];
     const quickPickCalls: Array<{ items: unknown[]; options: unknown }> = [];
     const quickPickQueue: unknown[] = [];
     const warningMessageQueue: unknown[] = [];
@@ -207,6 +210,7 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
     let currentWorkspaceTrusted = true;
     let currentExtensionMode = 2;
     let clipboardText = '';
+    let availableTasks: unknown[] = [];
 
     const vscode = {
         EventEmitter: FakeEventEmitter,
@@ -288,6 +292,13 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
                     clipboardText = value;
                     clipboardWrites.push(value);
                 }
+            }
+        },
+        tasks: {
+            fetchTasks: async () => availableTasks,
+            executeTask: async (task: unknown) => {
+                executedTasks.push(task);
+                return { task };
             }
         },
         workspace: {
@@ -495,6 +506,7 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
         statusBarMessages,
         warningMessages,
         errorMessages,
+        executedTasks,
         quickPickCalls,
         queueQuickPickResult(result: unknown): void {
             quickPickQueue.push(result);
@@ -507,6 +519,9 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
         },
         setClipboardText(text: string): void {
             clipboardText = text;
+        },
+        setTasks(tasks: unknown[]): void {
+            availableTasks = [...tasks];
         },
         setWorkspaceFolders(folders: Array<{ name: string; fsPath: string }>, options?: { name?: string; fireEvent?: boolean }): void {
             currentWorkspaceFolders = folders.map((folder) => ({

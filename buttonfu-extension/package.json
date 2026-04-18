@@ -199,6 +199,23 @@
       {
         "command": "buttonfu.copyAgentBridgeInstructions",
         "title": "ButtonFu: Copy Agent Bridge Instructions"
+      },
+      {
+        "command": "buttonfu.agentBridgeStatus",
+        "title": "ButtonFu: Agent Bridge Status"
+      },
+      {
+        "command": "buttonfu.agentBridgeDoctor",
+        "title": "ButtonFu: Agent Bridge Doctor"
+      },
+      {
+        "command": "buttonfu.agentBridgeCopyQuickStart",
+        "title": "ButtonFu: Copy Agent Bridge Quick Start"
+      },
+      {
+        "command": "buttonfu.agentBridgeShowContext",
+        "title": "ButtonFu: Agent Bridge Context",
+        "icon": "$(info)"
       }
     ],
     "menus": {
@@ -226,6 +243,21 @@
         {
           "command": "buttonfu.dev.clearDriveNetSmokeData",
           "when": "buttonfu.isDevelopmentMode"
+        },
+        {
+          "command": "buttonfu.copyAgentBridgeInstructions"
+        },
+        {
+          "command": "buttonfu.agentBridgeStatus"
+        },
+        {
+          "command": "buttonfu.agentBridgeDoctor"
+        },
+        {
+          "command": "buttonfu.agentBridgeCopyQuickStart"
+        },
+        {
+          "command": "buttonfu.agentBridgeShowContext"
         }
       ],
       "view/title": [
@@ -238,6 +270,11 @@
           "command": "buttonfu.refreshButtons",
           "when": "view == buttonfu.buttonsView",
           "group": "navigation@2"
+        },
+        {
+          "command": "buttonfu.agentBridgeShowContext",
+          "when": "view == buttonfu.buttonsView",
+          "group": "navigation@3"
         }
       ]
     },

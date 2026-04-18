@@ -47,6 +47,49 @@ test('execute palette action warns and falls back when JSON arguments are invali
     );
 });
 
+test('execute task starts the matching VS Code task and shows a status message', async () => {
+    const { harness, executor } = createExecutorContext();
+    harness.setTasks([
+        {
+            name: 'Build Workspace',
+            source: 'workspace'
+        }
+    ]);
+
+    const button = createDefaultButton('Global');
+    button.type = 'TaskExecution';
+    button.executionText = 'Build Workspace';
+
+    await executor.execute(button);
+
+    assert.equal(harness.executedTasks.length, 1);
+    assert.deepEqual(harness.executedTasks[0], { name: 'Build Workspace', source: 'workspace' });
+    assert.match(harness.statusBarMessages.at(-1)?.text || '', /starting task "Build Workspace"/);
+    assert.equal(harness.errorMessages.length, 0);
+});
+
+test('execute task shows Drive.NET smoke prerequisite guidance before launching the task', async () => {
+    const { harness, executor } = createExecutorContext();
+    harness.setTasks([
+        {
+            name: 'Drive.NET: manifest smoke - buttonfu-extension',
+            source: 'workspace'
+        }
+    ]);
+
+    const button = createDefaultButton('Local');
+    button.type = 'TaskExecution';
+    button.executionText = 'Drive.NET: manifest smoke - buttonfu-extension';
+
+    await executor.execute(button);
+
+    assert.equal(harness.executedTasks.length, 1);
+    assert.equal(
+        harness.informationMessages.at(-1),
+        'ButtonFu: starting Drive.NET smoke tests. This requires the "Run ButtonFu Extension (Isolated Smoke Test)" Extension Development Host to already be running.'
+    );
+});
+
 test('captureSystemTokens resolves GitBranch for git worktree checkouts', () => {
     const { harness, executor } = createExecutorContext();
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'buttonfu-button-worktree-'));

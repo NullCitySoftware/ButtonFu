@@ -9,9 +9,15 @@ import { ButtonStore } from './buttonStore';
 export class ButtonTreeProvider implements vscode.TreeDataProvider<ButtonTreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ButtonTreeItem | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private readonly storeChangeDisposable: vscode.Disposable;
 
     constructor(private readonly store: ButtonStore) {
-        store.onDidChange(() => this.refresh());
+        this.storeChangeDisposable = store.onDidChange(() => this.refresh());
+    }
+
+    dispose(): void {
+        this.storeChangeDisposable.dispose();
+        this._onDidChangeTreeData.dispose();
     }
 
     refresh(): void {
@@ -87,8 +93,8 @@ export class ButtonTreeProvider implements vscode.TreeDataProvider<ButtonTreeIte
             
             const iconId = btn.icon || 'play';
             let iconColour: vscode.ThemeColor | undefined;
-            if (btn.colour) {
-                // Try to use as a theme colour token; hex colours aren't supported by ThemeIcon
+            if (btn.colour && !btn.colour.startsWith('#')) {
+                // ThemeColor accepts theme token identifiers only; hex colours are silently ignored.
                 iconColour = new vscode.ThemeColor(btn.colour);
             }
 

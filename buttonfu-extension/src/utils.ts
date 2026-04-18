@@ -2,16 +2,13 @@
  * Shared utility functions for ButtonFu webview providers.
  */
 
+import * as crypto from 'crypto';
+
 export type ShellKind = 'cmd' | 'powershell' | 'posix';
 
 /** Generate a cryptographic nonce for CSP script/style tags */
 export function getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
+    return crypto.randomBytes(16).toString('hex');
 }
 
 /** Escape a string for safe insertion into HTML */

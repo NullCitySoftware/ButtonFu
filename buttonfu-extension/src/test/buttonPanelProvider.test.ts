@@ -139,6 +139,22 @@ test('note split buttons post execute and dropdown menu actions', async () => {
     });
 });
 
+test('button panel hides hash-like note names behind readable fallback labels', async () => {
+    const { noteStore, provider } = createProviderContext();
+
+    const note = createDefaultNote('Local');
+    note.id = 'hash-name-note';
+    note.name = '4065be8cb3d141c38416bc4d7e9da4af';
+    note.category = 'General';
+    note.content = 'Drive.NET Smoke Tests';
+    await noteStore.saveNode(note);
+
+    const html = renderHtml(provider);
+
+    assert.match(html, /Drive\.NET Smoke Tests/);
+    assert.doesNotMatch(html, /<span class="btn-label">4065be8cb3d141c38416bc4d7e9da4af<\/span>/);
+});
+
 test('note add buttons post scope-aware create messages', async () => {
     const { harness, provider } = createProviderContext();
     const general = createDefaultButton('Global');

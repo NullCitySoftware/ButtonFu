@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
-import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as crypto from 'crypto';
-import { SYSTEM_TOKENS, UserToken } from './types';
-
-/** Snapshot of all resolvable values captured at invocation time */
-export interface TokenSnapshot {
-    [tokenName: string]: string;
-}
+import { UserToken, SYSTEM_TOKENS } from './types';
+import {
+    captureSystemTokens as captureSystemTokensCore,
+    findTokensInText as findTokensInTextCore,
+    replaceTokens as replaceTokensCore,
+} from './tokenResolver';
+export type { TokenSnapshot } from './tokenResolver';
+import type { TokenSnapshot } from './tokenResolver';
 
 /** Additional alias token made available to prompt actions */
 export interface PromptTokenAlias {
@@ -52,107 +52,10 @@ export interface CopilotPromptRequest {
 
 /** Shared prompt/token logic used by ButtonFu buttons and notes */
 export class PromptActionService {
-    /** Capture all system token values right now */
+    /** Capture all system token values right now. */
     captureSystemTokens(aliasDefinitions: PromptTokenAlias[] = []): TokenSnapshot {
-        const snap: TokenSnapshot = {};
-        const editor = vscode.window.activeTextEditor;
-        const wsFolder = vscode.workspace.workspaceFolders?.[0];
         const aliasMap = new Map(aliasDefinitions.map(def => [def.token.toLowerCase(), def.value]));
-
-        for (const def of SYSTEM_TOKENS) {
-            const key = def.token.toLowerCase();
-            if (aliasMap.has(key)) {
-                snap[key] = aliasMap.get(key) ?? '';
-                continue;
-            }
-
-            let value = '';
-            try {
-                switch (def.token) {
-                    case '$WorkspacePath$':
-                        value = wsFolder?.uri.fsPath ?? '';
-                        break;
-                    case '$WorkspaceName$':
-                        value = wsFolder?.name ?? vscode.workspace.name ?? '';
-                        break;
-                    case '$FullActiveFilePath$':
-                        value = editor?.document.uri.fsPath ?? '';
-                        break;
-                    case '$ActiveFileName$':
-                        value = editor ? path.basename(editor.document.uri.fsPath) : '';
-                        break;
-                    case '$ActiveFileExtension$':
-                        value = editor ? path.extname(editor.document.uri.fsPath) : '';
-                        break;
-                    case '$ActiveFileDirectory$':
-                        value = editor ? path.dirname(editor.document.uri.fsPath) : '';
-                        break;
-                    case '$ActiveFileRelativePath$':
-                        value = editor ? vscode.workspace.asRelativePath(editor.document.uri, false) : '';
-                        break;
-                    case '$SelectedText$':
-                        value = editor ? editor.document.getText(editor.selection) : '';
-                        break;
-                    case '$CurrentLineNumber$':
-                        value = editor ? String(editor.selection.active.line + 1) : '';
-                        break;
-                    case '$CurrentColumnNumber$':
-                        value = editor ? String(editor.selection.active.character + 1) : '';
-                        break;
-                    case '$CurrentLineText$':
-                        value = editor ? editor.document.lineAt(editor.selection.active.line).text : '';
-                        break;
-                    case '$DateTime$':
-                        value = new Date().toISOString();
-                        break;
-                    case '$Date$':
-                        value = new Date().toISOString().slice(0, 10);
-                        break;
-                    case '$Time$':
-                        value = new Date().toTimeString().slice(0, 8);
-                        break;
-                    case '$Platform$':
-                        value = process.platform;
-                        break;
-                    case '$Hostname$':
-                        value = os.hostname();
-                        break;
-                    case '$Username$':
-                        value = os.userInfo().username;
-                        break;
-                    case '$HomeDirectory$':
-                        value = os.homedir();
-                        break;
-                    case '$TempDirectory$':
-                        value = os.tmpdir();
-                        break;
-                    case '$Clipboard$':
-                        value = '';
-                        break;
-                    case '$GitBranch$':
-                        value = this.getGitBranch(wsFolder?.uri.fsPath);
-                        break;
-                    case '$PathSeparator$':
-                        value = path.sep;
-                        break;
-                    case '$EOL$':
-                        value = os.EOL;
-                        break;
-                    case '$RandomUUID$':
-                        value = crypto.randomUUID();
-                        break;
-                }
-            } catch {
-                value = '';
-            }
-            snap[key] = value;
-        }
-
-        for (const alias of aliasDefinitions) {
-            snap[alias.token.toLowerCase()] = alias.value;
-        }
-
-        return snap;
+        return captureSystemTokensCore(aliasMap);
     }
 
     /** Capture clipboard asynchronously and merge into snapshot */
@@ -164,32 +67,14 @@ export class PromptActionService {
         }
     }
 
-    /** Find all tokens used in the provided text */
+    /** Find all tokens used in the provided text. */
     findTokensInText(text: string): string[] {
-        const regex = /\$[A-Za-z_][A-Za-z0-9_]*\$/gi;
-        const matches = text.match(regex);
-        if (!matches) { return []; }
-
-        const seen = new Set<string>();
-        const result: string[] = [];
-        for (const match of matches) {
-            const lower = match.toLowerCase();
-            if (!seen.has(lower)) {
-                seen.add(lower);
-                result.push(match);
-            }
-        }
-        return result;
+        return findTokensInTextCore(text);
     }
 
-    /** Replace tokens in text using system and user values */
+    /** Replace tokens in text using system and user values. */
     replaceTokens(text: string, systemSnap: TokenSnapshot, userValues: TokenSnapshot): string {
-        return text.replace(/\$[A-Za-z_][A-Za-z0-9_]*\$/gi, (match) => {
-            const lower = match.toLowerCase();
-            if (lower in systemSnap) { return systemSnap[lower]; }
-            if (lower in userValues) { return userValues[lower]; }
-            return match;
-        });
+        return replaceTokensCore(text, systemSnap, userValues);
     }
 
     /** Determine which user tokens need input */
@@ -537,41 +422,4 @@ export class PromptActionService {
         return path.join(folders[0].uri.fsPath, normalizedPath);
     }
 
-    /** Try to read the current git branch from HEAD */
-    private getGitBranch(workspacePath?: string): string {
-        if (!workspacePath) { return ''; }
-        try {
-            const headFile = this.resolveGitHeadFile(workspacePath);
-            if (!headFile || !fs.existsSync(headFile)) { return ''; }
-            const head = fs.readFileSync(headFile, 'utf8').trim();
-            const match = head.match(/^ref:\s+refs\/heads\/(.+)$/);
-            return match ? match[1] : head.slice(0, 8);
-        } catch {
-            return '';
-        }
-    }
-
-    /** Resolve the HEAD file for normal repos and worktrees. */
-    private resolveGitHeadFile(workspacePath: string): string | undefined {
-        const gitPath = path.join(workspacePath, '.git');
-        if (!fs.existsSync(gitPath)) {
-            return undefined;
-        }
-
-        const stat = fs.statSync(gitPath);
-        if (stat.isDirectory()) {
-            return path.join(gitPath, 'HEAD');
-        }
-        if (!stat.isFile()) {
-            return undefined;
-        }
-
-        const gitRef = fs.readFileSync(gitPath, 'utf8').trim();
-        const match = gitRef.match(/^gitdir:\s*(.+)$/i);
-        if (!match) {
-            return undefined;
-        }
-
-        return path.resolve(workspacePath, match[1], 'HEAD');
-    }
 }

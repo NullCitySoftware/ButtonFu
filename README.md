@@ -181,6 +181,13 @@ node buttonfu-extension/scripts/buttonfu-bridge.js createButton '{"name":"Run Te
 
 ### In-product help
 
-Run **ButtonFu: Copy Agent Bridge Instructions** from the Command Palette to copy the current bridge status, connection details for the active window, a ready-to-use example, and the automation rules to the clipboard. Useful for handing bridge details to an AI agent or a colleague.
+Use these Command Palette commands for bridge-first automation workflows:
+
+- **ButtonFu: Agent Bridge Status**
+- **ButtonFu: Agent Bridge Doctor**
+- **ButtonFu: Copy Agent Bridge Quick Start**
+- **ButtonFu: Copy Agent Bridge Instructions**
+
+These commands are intentionally oriented toward agents and automation diagnostics. They copy bridge metadata and ready-to-run examples for the current VS Code window.
 
 The repository root copilot-instructions.md contains the full protocol reference for contributors working inside this codebase.

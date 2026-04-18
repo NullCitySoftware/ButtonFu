@@ -21,14 +21,20 @@ export class ButtonStore {
     private _onDidChange = new vscode.EventEmitter<void>();
     public readonly onDidChange = this._onDidChange.event;
     private suppressGlobalConfigRefresh = false;
+    private readonly configChangeDisposable: vscode.Disposable;
 
     constructor(private readonly context: vscode.ExtensionContext) {
         // Watch for external changes to global settings
-        vscode.workspace.onDidChangeConfiguration(e => {
+        this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
             if (!this.suppressGlobalConfigRefresh && e.affectsConfiguration('buttonfu.globalButtons')) {
                 this._onDidChange.fire();
             }
         });
+    }
+
+    dispose(): void {
+        this.configChangeDisposable.dispose();
+        this._onDidChange.dispose();
     }
 
     /** Migrate legacy button types (e.g. PowerShellCommand → TerminalCommand) and data shapes */

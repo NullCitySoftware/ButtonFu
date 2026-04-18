@@ -19,6 +19,7 @@ function createAgentBridgeOverride(options: {
         pid: number;
         pipeName: string;
         workspaceName?: string;
+        workspaceFolders?: string[];
     }>;
 } = {}) {
     class FakeAgentBridge {
@@ -41,7 +42,8 @@ function createAgentBridgeOverride(options: {
         './agentBridge': {
             AgentBridge: FakeAgentBridge,
             listBridgeFiles: () => options.bridgeFiles ?? [],
-            getBridgeDirectory: () => options.bridgeDirectory ?? path.join('/tmp', '.buttonfu')
+            getBridgeDirectory: () => options.bridgeDirectory ?? path.join('/tmp', '.buttonfu'),
+            getBridgeFilePath: (pid: number) => path.join(options.bridgeDirectory ?? path.join('/tmp', '.buttonfu'), `bridge-${pid}.json`)
         }
     };
 }
@@ -83,6 +85,11 @@ test('activate registers the flat note commands and providers', async () => {
         'buttonfu.api.updateNote',
         'buttonfu.api.deleteNote',
         'buttonfu.copyAgentBridgeInstructions',
+        'buttonfu.agentBridgeStatus',
+        'buttonfu.agentBridgeDoctor',
+        'buttonfu.agentBridgeSelfTest',
+        'buttonfu.agentBridgeCopyQuickStart',
+        'buttonfu.agentBridgeShowContext',
         DEV_RESET_API_SMOKE_COMMAND,
         DEV_CLEAR_API_SMOKE_COMMAND,
         DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND
@@ -111,7 +118,8 @@ test('copyAgentBridgeInstructions generates a PowerShell example that works from
                 windowId: 'window-42',
                 pid: 4242,
                 pipeName: '\\\\.\\pipe\\buttonfu-vscode-4242',
-                workspaceName: 'Agent Workspace'
+                workspaceName: 'Agent Workspace',
+                workspaceFolders: ['p:/Source/DotNet/_Other/ButtonFu']
             }]
         })
     );
@@ -123,6 +131,9 @@ test('copyAgentBridgeInstructions generates a PowerShell example that works from
 
     assert.equal(harness.clipboardWrites.at(-1), text);
     assert.match(text, /Bridge discovery directory: .*\.buttonfu/);
+    assert.match(text, /Bridge runtime running:/);
+    assert.match(text, /Bridge file: .*bridge-4242\.json/);
+    assert.match(text, /Workspace folders: p:\/Source\/DotNet\/_Other\/ButtonFu|Workspace folders: p:\\Source\\DotNet\\_Other\\ButtonFu/);
     assert.match(text, /\$bridgeDir = Join-Path \$HOME "\.buttonfu"/);
     assert.match(text, /\$bridgePath = Join-Path \$bridgeDir "bridge-4242\.json"/);
     assert.match(text, /\$bridge = Get-Content \$bridgePath -Raw \| ConvertFrom-Json/);
@@ -146,8 +157,99 @@ test('copyAgentBridgeInstructions uses supported enablement guidance when the br
 
     assert.equal(harness.clipboardWrites.at(-1), text);
     assert.match(text, /Set `buttonfu\.enableAgentBridge` to `true` in VS Code settings\./);
-    assert.match(text, /You can use the Settings UI or edit your `settings\.json` file\./);
+    assert.match(text, /Then run `ButtonFu: Agent Bridge Status` to confirm this window has an active bridge\./);
     assert.doesNotMatch(text, /code --setting/);
+});
+
+test('agentBridgeCopyQuickStart includes targetWindowId for the active window', async () => {
+    const harness = createFakeVscodeHarness();
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    const extension = loadWithPatchedVscode<{ activate(context: any): Promise<void> }>(
+        extensionModulePath,
+        harness.vscode,
+        createAgentBridgeOverride({
+            bridgeFiles: [{
+                vscodePid: process.pid,
+                windowId: 'window-xyz',
+                pid: 8123,
+                pipeName: '\\\\.\\pipe\\buttonfu-vscode-8123',
+                workspaceName: 'Agent Workspace',
+                workspaceFolders: ['p:/Source/DotNet/_Other/ButtonFu']
+            }]
+        })
+    );
+    const context = harness.createExtensionContext();
+
+    await extension.activate(context);
+
+    const text = await harness.vscode.commands.executeCommand('buttonfu.agentBridgeCopyQuickStart') as string;
+
+    assert.equal(harness.clipboardWrites.at(-1), text);
+    assert.match(text, /\.\\scripts\\buttonfu-bridge\.ps1 -WorkspacePath/);
+    assert.match(text, /buttonfu\.api\.describe/);
+    assert.match(text, /targetWindowId = "window-xyz"/);
+    assert.match(text, /bridge-8123\.json/);
+});
+
+test('agentBridgeSelfTest reports the current bridge selectors for the active window', async () => {
+    const harness = createFakeVscodeHarness();
+    await harness.vscode.workspace.getConfiguration('buttonfu').update('enableAgentBridge', true);
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    const extension = loadWithPatchedVscode<{ activate(context: any): Promise<void> }>(
+        extensionModulePath,
+        harness.vscode,
+        createAgentBridgeOverride({
+            bridgeFiles: [{
+                vscodePid: process.pid,
+                windowId: 'window-self-test',
+                pid: 9901,
+                pipeName: '\\\\.\\pipe\\buttonfu-vscode-9901',
+                workspaceName: 'ButtonFu',
+                workspaceFolders: ['p:/Source/DotNet/_Other/ButtonFu']
+            }]
+        })
+    );
+    const context = harness.createExtensionContext();
+
+    await extension.activate(context);
+
+    const text = await harness.vscode.commands.executeCommand('buttonfu.agentBridgeSelfTest') as string;
+
+    assert.equal(harness.clipboardWrites.at(-1), text);
+    assert.match(text, /Overall: PASS/);
+    assert.match(text, /targetWindowId: window-self-test/);
+    assert.match(text, /bridge-9901\.json/);
+    assert.match(text, /workspace path: p:\/Source\/DotNet\/_Other\/ButtonFu|workspace path: p:\\Source\\DotNet\\_Other\\ButtonFu/);
+});
+
+test('agentBridgeShowContext warns when the active bridge has no workspace folders', async () => {
+    const harness = createFakeVscodeHarness();
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    const extension = loadWithPatchedVscode<{ activate(context: any): Promise<void> }>(
+        extensionModulePath,
+        harness.vscode,
+        createAgentBridgeOverride({
+            bridgeFiles: [{
+                vscodePid: process.pid,
+                windowId: 'window-empty-workspace',
+                pid: 7777,
+                pipeName: '\\\\.\\pipe\\buttonfu-vscode-7777',
+                workspaceName: '',
+                workspaceFolders: []
+            }]
+        })
+    );
+    const context = harness.createExtensionContext();
+
+    await extension.activate(context);
+
+    const text = await harness.vscode.commands.executeCommand('buttonfu.agentBridgeShowContext') as string;
+
+    assert.equal(harness.clipboardWrites.at(-1), text);
+    assert.match(text, /ButtonFu Agent Bridge Context/);
+    assert.match(text, /Window ID: window-empty-workspace/);
+    assert.match(text, /Workspace folders: \(none\)/);
+    assert.match(text, /This window has no workspace folders attached\./);
 });
 
 test('production activation does not register development-only smoke commands', async () => {
@@ -467,7 +569,7 @@ test('openNoteEditor is enabled by default and opens the editor', async () => {
         './editorPanel': {
             ButtonEditorPanel: {
                 configure: () => undefined,
-                createOrShow: () => { opened = true; },
+                createOrShow: () => undefined,
                 createOrShowWithNew: () => undefined,
                 createOrShowWithTab: () => undefined,
                 createOrShowWithButton: () => undefined,
@@ -479,7 +581,7 @@ test('openNoteEditor is enabled by default and opens the editor', async () => {
             NoteEditorPanel: {
                 configure: () => undefined,
                 closeCurrent: () => undefined,
-                createOrShow: () => undefined,
+                createOrShow: () => { opened = true; },
                 createOrShowWithNode: () => undefined,
                 createOrShowWithNew: () => undefined
             }
@@ -503,7 +605,7 @@ test('notes commands are blocked when the showNotes setting is disabled', async 
         './editorPanel': {
             ButtonEditorPanel: {
                 configure: () => undefined,
-                createOrShow: () => { opened = true; },
+                createOrShow: () => undefined,
                 createOrShowWithNew: () => undefined,
                 createOrShowWithTab: () => undefined,
                 createOrShowWithButton: () => undefined,
@@ -515,7 +617,7 @@ test('notes commands are blocked when the showNotes setting is disabled', async 
             NoteEditorPanel: {
                 configure: () => undefined,
                 closeCurrent: () => undefined,
-                createOrShow: () => undefined,
+                createOrShow: () => { opened = true; },
                 createOrShowWithNode: () => undefined,
                 createOrShowWithNew: () => undefined
             }

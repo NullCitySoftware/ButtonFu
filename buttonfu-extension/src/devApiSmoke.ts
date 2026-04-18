@@ -13,6 +13,18 @@ const DEV_API_SMOKE_BUTTON_NAME = 'ButtonFu API Smoke Button';
 const DEV_API_SMOKE_NOTE_NAME = 'ButtonFu API Smoke Note';
 const DRIVE_NET_SMOKE_BUTTON_COMMAND = 'echo ButtonFu DriveNet smoke test';
 const DRIVE_NET_SMOKE_NOTE_CONTENT = 'This note was created by a Drive.NET automation test.';
+const DRIVE_NET_WORKFLOW_BUTTON_NAMES = new Set([
+    '1. Launch Isolated Smoke Host',
+    'Launch Isolated Smoke Host',
+    '2. Smoke Tests',
+    '2. Drive.NET Smoke Tests',
+    'Drive.NET Smoke Tests'
+]);
+const DRIVE_NET_WORKFLOW_NOTE_NAMES = new Set([
+    '3. Smoke Last Result',
+    '3. Drive.NET Smoke Last Result',
+    'Drive.NET Smoke Last Result'
+]);
 
 function buildSmokeButtonDescription(): string {
     return [
@@ -96,10 +108,18 @@ function buttonContainsDriveNetSmokeCommand(button: ButtonConfig): boolean {
 }
 
 function isDriveNetSmokeButton(button: ButtonConfig): boolean {
+    if (DRIVE_NET_WORKFLOW_BUTTON_NAMES.has(button.name.trim())) {
+        return true;
+    }
+
     return isGuidLikeName(button.name) && buttonContainsDriveNetSmokeCommand(button);
 }
 
 function isDriveNetSmokeNote(note: NoteConfig): boolean {
+    if (DRIVE_NET_WORKFLOW_NOTE_NAMES.has(note.name.trim())) {
+        return true;
+    }
+
     return isGuidLikeName(note.name) && note.content.trim() === DRIVE_NET_SMOKE_NOTE_CONTENT;
 }
 
@@ -423,3 +443,4 @@ export async function resetDevApiSmokeData(
         note: updatedNote
     };
 }
+

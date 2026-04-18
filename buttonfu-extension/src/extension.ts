@@ -12,10 +12,10 @@ import { NoteActionService } from './noteActionService';
 import { NoteEditorPanel } from './noteEditorPanel';
 import * as buttonApi from './buttonApiService';
 import * as noteApi from './noteApiService';
-import { AgentBridge, listBridgeFiles, getBridgeDirectory } from './agentBridge';
+import { AgentBridge } from './agentBridge';
 import type { WorkspaceContextProvider } from './agentBridge';
-import { AUTOMATION_GUIDANCE } from './apiSchema';
 import { sanitizeBridgeCommandParam } from './bridgeCommandSanitizer';
+import { registerAgentBridgeCommands } from './agentBridgeCommands';
 import {
     clearDevApiSmokeData,
     clearDriveNetSmokeData,
@@ -111,19 +111,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     store = new ButtonStore(context);
     executor = new ButtonExecutor();
     noteStore = new NoteStore(context);
+    context.subscriptions.push(store, noteStore);
 
     const notePreviewProvider = new NotePreviewProvider(noteStore);
+    context.subscriptions.push(notePreviewProvider);
     noteActionService = new NoteActionService(noteStore, context.extensionUri, notePreviewProvider);
 
     // Register dynamic commands for all existing buttons
     registerButtonCommands(context);
 
     // Re-register when buttons change
-    store.onDidChange(() => registerButtonCommands(context));
+    context.subscriptions.push(store.onDidChange(() => registerButtonCommands(context)));
 
     // Register the sidebar webview provider
     panelProvider = new ButtonPanelProvider(context.extensionUri, store, noteStore, context.globalState);
-    ButtonEditorPanel.configure(context.globalState, () => panelProvider.refresh());
+    context.subscriptions.push(panelProvider);
+    ButtonEditorPanel.configure(context.globalState, () => panelProvider.refresh(), (btn) => executeButtonWithFlow(btn, context.extensionUri));
     (NoteEditorPanel as typeof NoteEditorPanel & { configure?: (globalState: vscode.Memento) => void }).configure?.(context.globalState);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(ButtonPanelProvider.viewType, panelProvider)
@@ -230,7 +233,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (!ensureNotesEnabled()) {
                 return;
             }
-            ButtonEditorPanel.createOrShow(store, context.extensionUri, noteStore);
+            NoteEditorPanel.createOrShow(noteStore, context.extensionUri);
         })
     );
 
@@ -441,95 +444,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         })
     );
 
-    // -----------------------------------------------------------------------
-    // Agent Bridge help command
-    // -----------------------------------------------------------------------
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('buttonfu.copyAgentBridgeInstructions', async () => {
-            const bridgeEnabled = vscode.workspace.getConfiguration('buttonfu').get<boolean>('enableAgentBridge', false);
-            const bridges = listBridgeFiles();
-            const bridgeDirectory = getBridgeDirectory();
-            const currentBridge = bridges.find(b => b.vscodePid === process.pid);
-
-            const lines: string[] = [
-                '# ButtonFu Agent Bridge — Automation Instructions',
-                '',
-                '## Rule: use the bridge, never edit storage directly',
-                '',
-                ...AUTOMATION_GUIDANCE.automationWarnings.map(w => `⚠️  ${w}`),
-                '',
-                '## Preferred automation surface',
-                '',
-                AUTOMATION_GUIDANCE.preferredAutomationSurface,
-                '',
-                '## Supported mutation surface',
-                '',
-                AUTOMATION_GUIDANCE.supportedMutationSurface,
-                '',
-                '## Unsupported mutation targets (DO NOT USE)',
-                '',
-                ...AUTOMATION_GUIDANCE.unsupportedAutomationMutationSurfaces.map(s => `- ${s}`),
-                '',
-                '## Bridge status',
-                '',
-                `Enabled: ${bridgeEnabled}`,
-                `Bridge discovery directory: ${bridgeDirectory}`,
-                `Active bridges found: ${bridges.length}`,
-            ];
-
-            if (currentBridge) {
-                lines.push(
-                    '',
-                    '## This window\'s bridge',
-                    '',
-                    `Window ID: ${currentBridge.windowId}`,
-                    `PID: ${currentBridge.pid}`,
-                    `Pipe: ${currentBridge.pipeName}`,
-                    `Workspace: ${currentBridge.workspaceName || '(none)'}`,
-                    '',
-                    '## Ready-to-use example (PowerShell)',
-                    '',
-                    '```powershell',
-                    '$bridgeDir = Join-Path $HOME ".buttonfu"',
-                    `$bridgePath = Join-Path $bridgeDir "bridge-${currentBridge.pid}.json"`,
-                    '$bridge = Get-Content $bridgePath -Raw | ConvertFrom-Json',
-                    '$body = @{',
-                    '    jsonrpc = "2.0"; id = 1',
-                    '    method  = "buttonfu.api.listButtons"',
-                    '    auth    = $bridge.authToken',
-                    '} | ConvertTo-Json -Depth 20 -Compress',
-                    '',
-                    '# Connect to the named pipe and send the request',
-                    '$pipe = New-Object System.IO.Pipes.NamedPipeClientStream(".", $bridge.pipeName.Replace("\\\\.\\pipe\\",""), "InOut")',
-                    '$pipe.Connect(5000)',
-                    '$writer = New-Object System.IO.StreamWriter($pipe)',
-                    '$reader = New-Object System.IO.StreamReader($pipe)',
-                    '$writer.WriteLine($body)',
-                    '$writer.Flush()',
-                    '$response = $reader.ReadLine()',
-                    '$pipe.Dispose()',
-                    '$response | ConvertFrom-Json | ConvertTo-Json -Depth 10',
-                    '```',
-                );
-            } else if (!bridgeEnabled) {
-                lines.push(
-                    '',
-                    '## How to enable',
-                    '',
-                    'Set `buttonfu.enableAgentBridge` to `true` in VS Code settings.',
-                    'You can use the Settings UI or edit your `settings.json` file.',
-                );
-            }
-
-            const text = lines.join('\n');
-            await vscode.env.clipboard.writeText(text);
-            void vscode.window.showInformationMessage(
-                'ButtonFu Agent Bridge instructions copied to clipboard.'
-            );
-            return text;
-        })
-    );
+    registerAgentBridgeCommands(context, () => !!agentBridge?.isRunning);
 
     if (isDevelopmentMode) {
         context.subscriptions.push(
@@ -549,6 +464,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return clearDriveNetSmokeData();
             })
         );
+
     }
 
     // -----------------------------------------------------------------------
