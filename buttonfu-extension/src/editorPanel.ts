@@ -2489,7 +2489,9 @@ ${sharedControlScript}
             updateScopeLabels();
 
             const globals = getListItems('Global');
-            const locals = getListItems('Local');
+            // Workspace buttons (read-only, from buttonfu.workspaceButtons in .vscode/settings.json)
+            // list alongside the Local items in the workspace panel.
+            const locals = getListItems('Local').concat(getListItems('Workspace')).sort(compareListItems);
             const globalEmptyTitle = notesEnabled ? 'No global items yet' : 'No global buttons yet';
             const localEmptyTitle = notesEnabled ? 'No workspace items yet' : 'No workspace buttons yet';
             const globalEmptyDesc = notesEnabled
@@ -2589,7 +2591,38 @@ ${sharedControlScript}
                                     '<span class="meta-tag"><span class="codicon codicon-hubot"></span> ' + escapeHtml((b.copilotModel || '').trim() || 'auto') + '</span>'
                                 : '';
 
-            return '<div class="button-card" data-button-id="' + escapeAttr(b.id) + '" role="group" aria-label="' + escapeAttr(b.name || 'Untitled') + '">' +
+            // Workspace buttons come from buttonfu.workspaceButtons in .vscode/settings.json
+            // and are read-only: edit/delete (and move/duplicate) are disabled.
+            const isReadOnly = b.locality === 'Workspace';
+            const readOnlyTitle = 'Defined in .vscode/settings.json';
+            const settingsPart = isReadOnly
+                ? '<span class="meta-sep">·</span>' +
+                  '<span class="meta-tag"><span class="codicon codicon-settings-gear"></span> .vscode/settings.json</span>'
+                : '';
+
+            const actionsHtml = isReadOnly
+                ? '<button class="btn-icon btn-icon-xs" title="' + escapeAttr(readOnlyTitle) + '" disabled>' +
+                  '<span class="codicon codicon-chevron-up"></span></button>' +
+                  '<button class="btn-icon btn-icon-xs" title="' + escapeAttr(readOnlyTitle) + '" disabled>' +
+                  '<span class="codicon codicon-chevron-down"></span></button>' +
+                  '<button class="btn-icon" title="' + escapeAttr(readOnlyTitle) + '" disabled>' +
+                  '<span class="codicon codicon-copy"></span></button>' +
+                  '<button class="btn-icon" title="' + escapeAttr(readOnlyTitle) + '" disabled>' +
+                  '<span class="codicon codicon-edit"></span></button>' +
+                  '<button class="btn-icon" title="' + escapeAttr(readOnlyTitle) + '" disabled>' +
+                  '<span class="codicon codicon-trash"></span></button>'
+                : '<button class="btn-icon btn-icon-xs" data-move-up-id="' + escapeAttr(b.id) + '" title="Move Up"' + (isFirst ? ' disabled' : '') + '>' +
+                  '<span class="codicon codicon-chevron-up"></span></button>' +
+                  '<button class="btn-icon btn-icon-xs" data-move-down-id="' + escapeAttr(b.id) + '" title="Move Down"' + (isLast ? ' disabled' : '') + '>' +
+                  '<span class="codicon codicon-chevron-down"></span></button>' +
+                  '<button class="btn-icon" data-duplicate-id="' + escapeAttr(b.id) + '" title="Duplicate">' +
+                  '<span class="codicon codicon-copy"></span></button>' +
+                  '<button class="btn-icon" data-edit-id="' + escapeAttr(b.id) + '" title="Edit">' +
+                  '<span class="codicon codicon-edit"></span></button>' +
+                  '<button class="btn-icon" data-delete-id="' + escapeAttr(b.id) + '" title="Delete">' +
+                  '<span class="codicon codicon-trash"></span></button>';
+
+            return '<div class="button-card" data-button-id="' + escapeAttr(b.id) + '"' + (isReadOnly ? ' data-readonly="true" title="' + escapeAttr(readOnlyTitle) + '"' : '') + ' role="group" aria-label="' + escapeAttr(b.name || 'Untitled') + '">' +
                 '<div class="card-icon"><span class="codicon codicon-' + escapeHtml(b.icon || 'play') + '"></span></div>' +
                 '<div class="card-body">' +
                 '<div class="card-name">' + escapeHtml(b.name || 'Untitled') + '</div>' +
@@ -2597,22 +2630,14 @@ ${sharedControlScript}
                 '<span class="meta-tag"><span class="codicon codicon-' + escapeHtml(typeInfo.icon || 'play') + '"></span> ' + escapeHtml(typeInfo.label || b.type) + '</span>' +
                 '<span class="meta-sep">·</span>' +
                 '<span class="meta-tag"><span class="codicon codicon-tag"></span> ' + escapeHtml(category) + colourPart + '</span>' +
+                settingsPart +
                 tokenPart +
                 modelPart +
                 shortcutPart +
                 '</div>' +
                 '</div>' +
                 '<div class="card-actions">' +
-                '<button class="btn-icon btn-icon-xs" data-move-up-id="' + escapeAttr(b.id) + '" title="Move Up"' + (isFirst ? ' disabled' : '') + '>' +
-                '<span class="codicon codicon-chevron-up"></span></button>' +
-                '<button class="btn-icon btn-icon-xs" data-move-down-id="' + escapeAttr(b.id) + '" title="Move Down"' + (isLast ? ' disabled' : '') + '>' +
-                '<span class="codicon codicon-chevron-down"></span></button>' +
-                '<button class="btn-icon" data-duplicate-id="' + escapeAttr(b.id) + '" title="Duplicate">' +
-                '<span class="codicon codicon-copy"></span></button>' +
-                '<button class="btn-icon" data-edit-id="' + escapeAttr(b.id) + '" title="Edit">' +
-                '<span class="codicon codicon-edit"></span></button>' +
-                '<button class="btn-icon" data-delete-id="' + escapeAttr(b.id) + '" title="Delete">' +
-                '<span class="codicon codicon-trash"></span></button>' +
+                actionsHtml +
                 '</div></div>';
         }
 
@@ -3953,7 +3978,7 @@ ${sharedControlScript}
             const noteEdit = e.target.closest('[data-note-edit-id]');
             if (noteEdit) { e.stopPropagation(); editNote(noteEdit.dataset.noteEditId); return; }
             const card = e.target.closest('[data-button-id]');
-            if (card && !e.target.closest('[data-delete-id],[data-duplicate-id],[data-move-up-id],[data-move-down-id],[data-edit-id]')) { isNewButton = false; openEditor(getButton(card.dataset.buttonId)); }
+            if (card && card.dataset.readonly !== 'true' && !e.target.closest('[data-delete-id],[data-duplicate-id],[data-move-up-id],[data-move-down-id],[data-edit-id]')) { isNewButton = false; openEditor(getButton(card.dataset.buttonId)); }
             const noteCard = e.target.closest('[data-note-id]');
             if (noteCard && !e.target.closest('[data-note-delete-id],[data-note-move-up-id],[data-note-move-down-id],[data-note-edit-id]')) { editNote(noteCard.dataset.noteId); }
         });

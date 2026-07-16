@@ -180,6 +180,8 @@ export function listButtons(store: ButtonStore, input?: unknown): ApiResult<Butt
         buttons = store.getGlobalButtons();
     } else if (filter.locality === 'Local') {
         buttons = store.getLocalButtons();
+    } else if (filter.locality === 'Workspace') {
+        buttons = store.getWorkspaceButtons();
     } else {
         buttons = store.getAllButtons();
     }
@@ -195,6 +197,9 @@ export async function updateButton(store: ButtonStore, input: unknown): Promise<
     const existing = store.getButton(obj.id as string);
     if (!existing) {
         return { success: false, errors: [`Button not found: ${obj.id}`] };
+    }
+    if (existing.locality === 'Workspace') {
+        return { success: false, errors: [`Button is read-only: ${obj.id} is a workspace button defined in .vscode/settings.json (buttonfu.workspaceButtons).`] };
     }
     const fields = pickMutableButtonFields(obj);
     const merged = { ...existing, ...fields } as ButtonConfig;
@@ -237,8 +242,13 @@ export async function deleteButton(
             results.push({ success: false, errors: ['Each item must have an id.'] });
             continue;
         }
-        if (!store.getButton(id)) {
+        const existing = store.getButton(id);
+        if (!existing) {
             results.push({ success: false, errors: [`Button not found: ${id}`] });
+            continue;
+        }
+        if (existing.locality === 'Workspace') {
+            results.push({ success: false, errors: [`Button is read-only: ${id} is a workspace button defined in .vscode/settings.json (buttonfu.workspaceButtons).`] });
             continue;
         }
         await store.deleteButton(id);

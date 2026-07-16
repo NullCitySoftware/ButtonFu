@@ -2,6 +2,22 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.2.0] - 2026-07-16
+
+### Added
+- **Repo-committed workspace buttons** — a new read-only button source, the window-scoped `buttonfu.workspaceButtons` setting, lets a repository commit its buttons in `.vscode/settings.json`. Workspace buttons render in the workspace section grouped by category and execute like any other button (including `warnBeforeExecution`), but edit/delete are disabled in the UI (tooltip: "Defined in .vscode/settings.json") and no save path ever writes to the setting. Entries need no `id` — a stable id is derived from the name, category, and execution text — and sensible defaults apply (`type: "TerminalCommand"`, `category: "General"`, `icon: "play"`). The sidebar refreshes automatically when the setting changes, and `buttonfu.api.listButtons` accepts `{ "locality": "Workspace" }` while the update/delete API commands reject workspace buttons as read-only.
+
+  ```json
+  "buttonfu.workspaceButtons": [
+    { "name": "Run Local", "category": "PDF Whiffle", "icon": "play",
+      "type": "TerminalCommand",
+      "executionText": "pwsh -File build.ps1; dotnet run --project PdfWhiffle.Web" },
+    { "name": "Deploy PDF Whiffle", "category": "PDF Whiffle", "icon": "rocket",
+      "type": "TerminalCommand", "warnBeforeExecution": true,
+      "executionText": "pwsh -File ..\\HiroixHost\\deploy\\deploy.ps1 -Site pdfwhiffle" }
+  ]
+  ```
+
 ## [1.1.2] - 2026-04-18
 ### Changed
 - Improvements to agent Bridge and agent discovery.

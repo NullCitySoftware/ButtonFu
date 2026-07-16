@@ -362,3 +362,46 @@ test('deleteButton returns error for unknown id', async () => {
 
     assert.equal(result.success, false);
 });
+
+
+// ---------------------------------------------------------------------------
+// Workspace buttons (read-only settings source)
+// ---------------------------------------------------------------------------
+
+test('listButtons supports the Workspace locality filter', async () => {
+    const { harness, store, api } = createFixtures();
+
+    await harness.vscode.workspace.getConfiguration('buttonfu').update('workspaceButtons', [
+        { name: 'Repo Button', executionText: 'echo repo' }
+    ]);
+    await api.createButton(store, { name: 'User Button', locality: 'Global' });
+
+    const workspaceOnly = api.listButtons(store, { locality: 'Workspace' });
+    assert.equal(workspaceOnly.success, true);
+    assert.equal(workspaceOnly.data?.length, 1);
+    assert.equal(workspaceOnly.data?.[0].name, 'Repo Button');
+    assert.equal(workspaceOnly.data?.[0].locality, 'Workspace');
+
+    const all = api.listButtons(store);
+    assert.equal(all.data?.length, 2);
+});
+
+test('updateButton and deleteButton reject read-only workspace buttons', async () => {
+    const { harness, store, api } = createFixtures();
+
+    await harness.vscode.workspace.getConfiguration('buttonfu').update('workspaceButtons', [
+        { name: 'Repo Button', executionText: 'echo repo' }
+    ]);
+    const wsId = store.getWorkspaceButtons()[0].id;
+
+    const updateResult = await api.updateButton(store, { id: wsId, name: 'Renamed' });
+    assert.equal(updateResult.success, false);
+    assert.match(updateResult.errors?.[0] ?? '', /read-only/);
+
+    const deleteResult = await api.deleteButton(store, wsId) as ApiResult<{ id: string }>;
+    assert.equal(deleteResult.success, false);
+    assert.match(deleteResult.errors?.[0] ?? '', /read-only/);
+
+    assert.equal(store.getWorkspaceButtons().length, 1);
+    assert.equal(store.getWorkspaceButtons()[0].name, 'Repo Button');
+});

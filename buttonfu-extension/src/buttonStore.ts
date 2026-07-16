@@ -5,6 +5,7 @@ import {
     ButtonLocality,
     ButtonType,
     deriveButtonFuItemSource,
+    deriveWorkspaceButtonId,
     generateId,
     getButtonFuItemActorFromSource,
     getButtonFuItemProvenanceForNew,
@@ -12,10 +13,15 @@ import {
     normalizeButtonFuItemActor
 } from './types';
 
+const VALID_BUTTON_TYPES: readonly string[] = ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'];
+
 /**
  * Manages persistence of button configurations.
  * Global buttons are stored in VS Code global settings.
  * Local buttons are stored in workspace state.
+ * Workspace buttons are read from the `buttonfu.workspaceButtons` setting
+ * (typically committed by a repo in `.vscode/settings.json`) and are read-only —
+ * no save path ever writes to that setting.
  */
 export class ButtonStore {
     private _onDidChange = new vscode.EventEmitter<void>();
@@ -24,9 +30,11 @@ export class ButtonStore {
     private readonly configChangeDisposable: vscode.Disposable;
 
     constructor(private readonly context: vscode.ExtensionContext) {
-        // Watch for external changes to global settings
+        // Watch for external changes to global settings and the workspace buttons setting
         this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
-            if (!this.suppressGlobalConfigRefresh && e.affectsConfiguration('buttonfu.globalButtons')) {
+            const globalChanged = !this.suppressGlobalConfigRefresh && e.affectsConfiguration('buttonfu.globalButtons');
+            const workspaceChanged = e.affectsConfiguration('buttonfu.workspaceButtons');
+            if (globalChanged || workspaceChanged) {
                 this._onDidChange.fire();
             }
         });
@@ -106,13 +114,107 @@ export class ButtonStore {
             .sort((a, b) => (a.sortOrder ?? 99999) - (b.sortOrder ?? 99999));
     }
 
-    /** Get all buttons (global + local) */
-    getAllButtons(): ButtonConfig[] {
-        return [...this.getGlobalButtons(), ...this.getLocalButtons()];
+    /**
+     * Get all workspace buttons from the `buttonfu.workspaceButtons` setting.
+     * Entries are normalised/validated; unusable entries (no name) are skipped.
+     * Workspace buttons are read-only — they are never written back anywhere.
+     */
+    getWorkspaceButtons(): ButtonConfig[] {
+        const config = vscode.workspace.getConfiguration('buttonfu');
+        const raw = config.get<unknown>('workspaceButtons');
+        if (!Array.isArray(raw)) {
+            return [];
+        }
+
+        const seenIds = new Set<string>();
+        const buttons: ButtonConfig[] = [];
+        for (const entry of raw) {
+            const button = this.normalizeWorkspaceButton(entry);
+            if (!button || seenIds.has(button.id)) {
+                continue;
+            }
+            seenIds.add(button.id);
+            buttons.push(button);
+        }
+
+        return buttons.sort((a, b) => (a.sortOrder ?? 99999) - (b.sortOrder ?? 99999));
     }
 
-    /** Save a button (routes to global or local based on locality) */
+    /**
+     * Normalise and validate one raw `buttonfu.workspaceButtons` settings entry.
+     * Applies defaults (type TerminalCommand, category General, icon play, default colour)
+     * and derives a stable id from name + category + executionText.
+     * Returns null when the entry is unusable (not an object, or missing a name).
+     */
+    private normalizeWorkspaceButton(entry: unknown): ButtonConfig | null {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            return null;
+        }
+
+        const raw = entry as Record<string, unknown>;
+        const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+        if (!name) {
+            return null;
+        }
+
+        const type = VALID_BUTTON_TYPES.includes(raw.type as string) ? raw.type as ButtonType : 'TerminalCommand';
+        const category = typeof raw.category === 'string' && raw.category.trim() ? raw.category.trim() : 'General';
+        const executionText = typeof raw.executionText === 'string' ? raw.executionText : '';
+        const terminals = Array.isArray(raw.terminals)
+            ? (raw.terminals as unknown[])
+                .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object' && !Array.isArray(t))
+                .map((t, index) => ({
+                    name: typeof t.name === 'string' && t.name ? t.name : `Terminal ${index + 1}`,
+                    commands: typeof t.commands === 'string' ? t.commands : '',
+                    dependentOnPrevious: Boolean(t.dependentOnPrevious)
+                }))
+            : undefined;
+
+        return this.migrateButton({
+            id: deriveWorkspaceButtonId(name, category, executionText),
+            name,
+            locality: 'Workspace' as ButtonLocality,
+            description: typeof raw.description === 'string' ? raw.description : '',
+            type,
+            executionText,
+            terminals,
+            category,
+            icon: typeof raw.icon === 'string' && raw.icon.trim() ? raw.icon.trim() : 'play',
+            colour: typeof raw.colour === 'string' ? raw.colour : '',
+            copilotModel: typeof raw.copilotModel === 'string' ? raw.copilotModel : '',
+            copilotMode: typeof raw.copilotMode === 'string' ? raw.copilotMode : 'agent',
+            copilotAttachFiles: Array.isArray(raw.copilotAttachFiles)
+                ? (raw.copilotAttachFiles as unknown[]).filter((f): f is string => typeof f === 'string')
+                : [],
+            copilotAttachActiveFile: Boolean(raw.copilotAttachActiveFile),
+            sortOrder: typeof raw.sortOrder === 'number' ? raw.sortOrder : undefined,
+            warnBeforeExecution: Boolean(raw.warnBeforeExecution),
+            userTokens: Array.isArray(raw.userTokens) ? raw.userTokens as ButtonConfig['userTokens'] : [],
+            createdBy: 'User',
+            lastModifiedBy: 'User',
+            source: 'User'
+        });
+    }
+
+    /** Returns true when the id belongs to a read-only workspace button. */
+    isWorkspaceButton(id: string): boolean {
+        return this.getWorkspaceButtons().some(b => b.id === id);
+    }
+
+    /** Get all buttons (global + local + workspace) */
+    getAllButtons(): ButtonConfig[] {
+        return [...this.getGlobalButtons(), ...this.getLocalButtons(), ...this.getWorkspaceButtons()];
+    }
+
+    /**
+     * Save a button (routes to global or local based on locality).
+     * Workspace buttons are read-only and are rejected — writes only ever
+     * target the global settings store or workspace state.
+     */
     async saveButton(button: ButtonConfig, actor: ButtonFuItemActor = 'User'): Promise<void> {
+        if (button.locality === 'Workspace') {
+            throw new Error('Workspace buttons are read-only — they are defined in .vscode/settings.json (buttonfu.workspaceButtons).');
+        }
         const normalizedButton = this.migrateButton({
             ...button,
             id: button.id || generateId()
@@ -141,8 +243,13 @@ export class ButtonStore {
         this._onDidChange.fire();
     }
 
-    /** Delete a button by ID */
+    /** Delete a button by ID. Workspace buttons are read-only and are never deleted. */
     async deleteButton(id: string): Promise<void> {
+        if (this.isWorkspaceButton(id)) {
+            console.warn('ButtonFu: deleteButton ignored — workspace buttons are read-only (defined in .vscode/settings.json)');
+            return;
+        }
+
         // Try removing from global
         const globals = this.getGlobalButtons();
         const globalIdx = globals.findIndex(b => b.id === id);

@@ -802,8 +802,10 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
         const columns = Math.max(1, Math.min(12, this.globalState.get<number>('options.columns', 1)));
         const showNotes = vscode.workspace.getConfiguration('buttonfu').get<boolean>('showNotes', true);
 
+        // Workspace buttons (read-only, from buttonfu.workspaceButtons in .vscode/settings.json)
+        // render alongside the Local buttons in the workspace section.
         const globalItems = this._getSidebarItems(allButtons.filter((button) => button.locality === 'Global'), 'Global', showNotes);
-        const localItems = this._getSidebarItems(allButtons.filter((button) => button.locality === 'Local'), 'Local', showNotes);
+        const localItems = this._getSidebarItems(allButtons.filter((button) => button.locality === 'Local' || button.locality === 'Workspace'), 'Local', showNotes);
 
         if (globalItems.length === 0 && localItems.length === 0) {
             return this._renderEmpty();
@@ -921,7 +923,10 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
             tooltip: button.description || button.name,
             data: button
         });
-        const tooltip = escapeHtml(button.description || displayName);
+        const baseTooltip = button.description || displayName;
+        const tooltip = escapeHtml(button.locality === 'Workspace'
+            ? `${baseTooltip}\n\nDefined in .vscode/settings.json`
+            : baseTooltip);
         const style = this._buildItemStyle(button.colour);
 
         return `<button class="fu-btn" data-execute="${escapeAttribute(button.id)}" title="${tooltip}" aria-label="${tooltip}"${style ? ` style="${style}"` : ''}>

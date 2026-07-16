@@ -43,6 +43,21 @@ Buttons come in two scopes. **Global** buttons are stored in your VS Code user s
 
 Both scopes show up together in the sidebar panel, clearly labelled, so you always know what you're clicking.
 
+### Repo-committed buttons (`buttonfu.workspaceButtons`)
+
+A repository can also ship its own buttons in git via the **`buttonfu.workspaceButtons`** setting in `.vscode/settings.json`. These render in the workspace section grouped by category and execute like any other button (including `warnBeforeExecution` confirmation dialogs), but they are **read-only in the UI** — edit and delete are disabled, because the source of truth is the committed settings file. Entries need no `id`; a stable id is derived from the name, category, and execution text. Only `name` is required — `type` defaults to `TerminalCommand`, `category` to `General`, and `icon` to `play`.
+
+```json
+"buttonfu.workspaceButtons": [
+  { "name": "Run Local", "category": "PDF Whiffle", "icon": "play",
+    "type": "TerminalCommand",
+    "executionText": "pwsh -File build.ps1; dotnet run --project PdfWhiffle.Web" },
+  { "name": "Deploy PDF Whiffle", "category": "PDF Whiffle", "icon": "rocket",
+    "type": "TerminalCommand", "warnBeforeExecution": true,
+    "executionText": "pwsh -File ..\\HiroixHost\\deploy\\deploy.ps1 -Site pdfwhiffle" }
+]
+```
+
 ---
 
 ## Notes & prompts

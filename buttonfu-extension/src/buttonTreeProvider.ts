@@ -89,8 +89,11 @@ export class ButtonTreeProvider implements vscode.TreeDataProvider<ButtonTreeIte
     private createButtonItems(buttons: ButtonConfig[]): ButtonTreeItem[] {
         return buttons.map(btn => {
             const typeLabel = this.getTypeShortLabel(btn.type);
-            const tooltip = `${btn.description || btn.name}\n${typeLabel} · ${btn.locality}`;
-            
+            const isWorkspaceButton = btn.locality === 'Workspace';
+            const tooltip = isWorkspaceButton
+                ? `${btn.description || btn.name}\n${typeLabel} · ${btn.locality}\nDefined in .vscode/settings.json`
+                : `${btn.description || btn.name}\n${typeLabel} · ${btn.locality}`;
+
             const iconId = btn.icon || 'play';
             let iconColour: vscode.ThemeColor | undefined;
             if (btn.colour && !btn.colour.startsWith('#')) {
@@ -98,11 +101,13 @@ export class ButtonTreeProvider implements vscode.TreeDataProvider<ButtonTreeIte
                 iconColour = new vscode.ThemeColor(btn.colour);
             }
 
+            // Workspace buttons use a distinct contextValue so edit/delete context-menu
+            // contributions (which target 'button') never apply to them.
             const item = new ButtonTreeItem(
                 `${btn.name}`,
                 tooltip,
                 vscode.TreeItemCollapsibleState.None,
-                'button',
+                isWorkspaceButton ? 'workspaceButton' : 'button',
                 btn.id,
                 new vscode.ThemeIcon(iconId, iconColour)
             );
@@ -115,7 +120,9 @@ export class ButtonTreeProvider implements vscode.TreeDataProvider<ButtonTreeIte
             };
 
             // Show locality badge in description
-            item.description = btn.locality === 'Local' ? '(workspace)' : '';
+            item.description = btn.locality === 'Local'
+                ? '(workspace)'
+                : isWorkspaceButton ? '(settings)' : '';
 
             return item;
         });

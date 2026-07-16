@@ -159,19 +159,19 @@ const methods: ApiMethodSchema[] = [
     },
     {
         method: 'buttonfu.api.listButtons',
-        description: 'List all buttons, optionally filtered by locality.',
-        params: 'undefined (all) or { locality: "Global" | "Local" }',
+        description: 'List all buttons, optionally filtered by locality. Workspace buttons come from the buttonfu.workspaceButtons setting and are read-only.',
+        params: 'undefined (all) or { locality: "Global" | "Local" | "Workspace" }',
         returns: 'ApiResult<ButtonConfig[]>'
     },
     {
         method: 'buttonfu.api.updateButton',
-        description: 'Update an existing button. Pass the id plus any fields to change.',
+        description: 'Update an existing button. Pass the id plus any fields to change. Workspace buttons (locality "Workspace") are read-only and cannot be updated.',
         params: '{ id: string, ...fields }  — accepts all ButtonConfig fields except id',
         returns: 'ApiResult<ButtonConfig>'
     },
     {
         method: 'buttonfu.api.deleteButton',
-        description: 'Delete one or more buttons by ID. Pass a string, { id }, or an array for batch.',
+        description: 'Delete one or more buttons by ID. Pass a string, { id }, or an array for batch. Workspace buttons (locality "Workspace") are read-only and cannot be deleted.',
         params: 'string | { id: string } | string[] | { ids: string[] }',
         returns: 'ApiResult<{ id: string }> | ApiResult<{ id: string }>[]',
         supportsBatch: true

@@ -11,8 +11,15 @@ export type ButtonType =
     | 'TaskExecution'
     | 'CopilotCommand';
 
-/** Where the button is stored */
-export type ButtonLocality = 'Global' | 'Local';
+/**
+ * Where the button is stored.
+ * - 'Global' — VS Code user settings (`buttonfu.globalButtons`, machine scope).
+ * - 'Local' — workspace state (Memento).
+ * - 'Workspace' — the read-only `buttonfu.workspaceButtons` setting, typically committed
+ *   by a repo in `.vscode/settings.json`. Workspace buttons need no `id` in settings —
+ *   a stable id is derived at load time (see {@link deriveWorkspaceButtonId}).
+ */
+export type ButtonLocality = 'Global' | 'Local' | 'Workspace';
 
 /** Who created or has modified a saved ButtonFu item. */
 export type ButtonFuItemSource = 'User' | 'Agent' | 'AgentAndUser';
@@ -337,6 +344,20 @@ export function createDefaultNote(locality: ButtonLocality = 'Global'): NoteConf
 /** Generate a unique ID using a cryptographic random UUID */
 export function generateId(): string {
     return crypto.randomUUID();
+}
+
+/**
+ * Derive a stable id for a workspace button (from `buttonfu.workspaceButtons`).
+ * Workspace buttons carry no `id` in settings, so the id is a hash of the fields
+ * that identify the button (name + category + executionText). The id stays stable
+ * across reloads as long as those fields do not change, which keeps derived
+ * artefacts (e.g. `buttonfu.run.<id>` keybinding commands) stable too.
+ */
+export function deriveWorkspaceButtonId(name: string, category: string, executionText: string): string {
+    const hash = crypto.createHash('sha256')
+        .update(`${name}\u0000${category}\u0000${executionText}`, 'utf8')
+        .digest('hex');
+    return `ws-${hash.slice(0, 24)}`;
 }
 
 /** Available codicon icons suitable for buttons */
