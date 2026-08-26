@@ -384,7 +384,11 @@
     "build-tests": "node -e \"require('fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc -p tsconfig.test.json",
     "test": "npm run build-tests && node scripts/run-node-tests.js",
     "test:drive-net": "pwsh -NoProfile -ExecutionPolicy Bypass -File tests/drive-net/Run-Manifest.ps1",
-    "vsce-package": "vsce package"
+    "vsce-package": "vsce package",
+    "preflight": "node scripts/preflight-release.js",
+    "verify-package": "node scripts/verify-package.js",
+    "release": "npm run preflight && npm test && npm run vsce-package && npm run verify-package",
+    "publish-extension": "npm run release && node scripts/publish-release.js"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

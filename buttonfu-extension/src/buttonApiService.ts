@@ -1,7 +1,7 @@
 /**
  * Programmatic CRUD API for ButtonFu buttons.
  *
- * Every function is stateless — pass the store in at the call site.
+ * Every function is stateless - pass the store in at the call site.
  * The `openEditor` flag (if present on input) is stripped before persistence
  * and surfaced to the caller so the command handler can open the editor panel.
  */

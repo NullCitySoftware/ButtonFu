@@ -76,7 +76,7 @@ async function executeButtonWithFlow(button: import('./types').ButtonConfig, ext
         const usedSystem = executor.getUsedSystemTokens(button, systemSnap);
         new TokenInputPanel(button, systemSnap, unresolved, resolvedUser, usedSystem, executor, extensionUri);
     } else {
-        // No unresolved tokens — execute directly (still replace any system/default tokens)
+        // No unresolved tokens - execute directly (still replace any system/default tokens)
         await executor.executeWithTokens(button, systemSnap, {});
     }
 }

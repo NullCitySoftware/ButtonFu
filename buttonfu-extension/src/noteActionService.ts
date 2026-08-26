@@ -229,7 +229,7 @@ export class NoteActionService {
             }
         };
 
-        // Always attempt token resolution — no-op if there are no tokens in the content.
+        // Always attempt token resolution - no-op if there are no tokens in the content.
 
         const aliases = this.getPromptAliases(note);
         const systemSnap = this.promptActions.captureSystemTokens(aliases);

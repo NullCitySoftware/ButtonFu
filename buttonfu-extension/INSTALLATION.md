@@ -1,4 +1,4 @@
-# ButtonFu — Installation Guide
+# ButtonFu - Installation Guide
 
 ## Prerequisites
 

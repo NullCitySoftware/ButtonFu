@@ -5,7 +5,7 @@
  * Discovers a running ButtonFu Agent Bridge, connects to its named pipe,
  * and sends a JSON-RPC 2.0 request.
  *
- * IMPORTANT — Automation rule
+ * IMPORTANT - Automation rule
  * ────────────────────────────
  * All button and note mutations MUST go through the ButtonFu Agent Bridge
  * or the registered buttonfu.api.* VS Code commands.

@@ -1,8 +1,8 @@
-# ButtonFu — Copilot Instructions
+# ButtonFu - Copilot Instructions
 
 ## Project Overview
 
-ButtonFu is a Visual Studio Code extension that provides customizable, clickable buttons in the VS Code sidebar. Users can create buttons that execute terminal commands, PowerShell scripts, VS Code command palette actions, project tasks, and GitHub Copilot prompts — all with a single click.
+ButtonFu is a Visual Studio Code extension that provides customizable, clickable buttons in the VS Code sidebar. Users can create buttons that execute terminal commands, PowerShell scripts, VS Code command palette actions, project tasks, and GitHub Copilot prompts - all with a single click.
 
 ## Repository Structure
 
@@ -18,6 +18,11 @@ ButtonFu/
 │   ├── tsconfig.json               # TypeScript configuration
 │   ├── esbuild.js                  # Build script with version injection
 │   ├── buttonfu-extension.esproj   # Visual Studio JS project
+│   ├── .vscodeignore               # What stays out of the VSIX: sources, tests, scripts, notes
+│   ├── scripts/
+│   │   ├── preflight-release.js    # Pre-release gate: version, changelog, what the public already has
+│   │   ├── verify-package.js       # Opens the built VSIX and checks it says and holds the right things
+│   │   └── publish-release.js      # Publishes that exact verified file, by path
 │   ├── resources/
 │   │   └── icon.svg                # Activity bar icon
 │   └── src/
@@ -34,9 +39,7 @@ ButtonFu/
     ├── ButtonFu.Installer.proj      # MSBuild project for Solution Explorer
     ├── License.rtf                 # MIT license for installer wizard
     ├── Deployment.md               # Build & deployment guide
-    ├── Version.Base.txt            # Legacy installer version file (not used by current build)
-    ├── Version.Build.txt           # Legacy installer version file (not used by current build)
-    └── Version.Moniker.txt         # Legacy installer version file (not used by current build)
+    └── Version.Build.txt           # Build number, claimed by each production build and stamped into the setup
 ```
 
 ## Architecture
@@ -44,18 +47,18 @@ ButtonFu/
 ### Data Model
 
 Each button has these properties:
-- **id** — unique identifier (generated)
-- **name** — display name
-- **locality** — `Global` (user settings) or `Local` (workspace state)
-- **description** — tooltip text
+- **id** - unique identifier (generated)
+- **name** - display name
+- **locality** - `Global` (user settings) or `Local` (workspace state)
+- **description** - tooltip text
 - **type** - one of: `TerminalCommand`, `PaletteAction`, `TaskExecution`, `CopilotCommand`, `ClaudeCommand`. `BUTTON_TYPES` in `types.ts` is the single source of truth; do not write a fourth copy of the list
-- **executionText** — the command/script/prompt to execute
-- **category** — grouping label for the sidebar tree
-- **icon** — codicon name (e.g. `play`, `terminal`, `rocket`)
-- **colour** — hex colour string
-- **copilotModel** — for CopilotCommand: model ID (e.g. `claude-opus-4.6`)
-- **copilotMode** — for CopilotCommand: `agent`, `ask`, `edit`, or `plan`
-- **copilotAttachFiles** — for CopilotCommand: array of file paths to attach
+- **executionText** - the command/script/prompt to execute
+- **category** - grouping label for the sidebar tree
+- **icon** - codicon name (e.g. `play`, `terminal`, `rocket`)
+- **colour** - hex colour string
+- **copilotModel** - for CopilotCommand: model ID (e.g. `claude-opus-4.6`)
+- **copilotMode** - for CopilotCommand: `agent`, `ask`, `edit`, or `plan`
+- **copilotAttachFiles** - for CopilotCommand: array of file paths to attach
 - **claudeDestination** - for ClaudeCommand: `terminalHere`, `terminalNewWindow`, `externalTerminal`, `newVsCodeWindow`, `backgroundAgent`, `headlessThenPanel` or `panelPrefill`
 - **claudeModel**, **claudeEffort**, **claudePermissionMode** - for ClaudeCommand: passed to the CLI. `bypassPermissions` is the default for a new button
 - **claudeCwd**, **claudeTargetFolder**, **claudeAddDirs** - for ClaudeCommand: directories, all token-resolved. `claudeTargetFolder` is required for `newVsCodeWindow` only
@@ -74,7 +77,7 @@ Each button has these properties:
 | `extension.ts` | Activation, command registration, wiring up store/executor/tree |
 | `types.ts` | TypeScript interfaces, enums, icon catalogue, default factories |
 | `buttonStore.ts` | CRUD operations for buttons, dual storage (settings + workspace state) |
-| `buttonExecutor.ts` | Executes buttons by type — terminal, PowerShell, commands, tasks, Copilot |
+| `buttonExecutor.ts` | Executes buttons by type - terminal, PowerShell, commands, tasks, Copilot |
 | `buttonTreeProvider.ts` | TreeDataProvider for the sidebar, groups buttons by category |
 | `editorPanel.ts` | Webview panel for the button editor with icon picker, autocomplete, colour picker |
 | `claudeCommandBuilder.ts` | Pure argv building and the launcher scripts. No `vscode` import, and it must stay that way |
@@ -111,10 +114,39 @@ One more, easy to break by accident: **never pass `env` or `strictEnv` when crea
 ## Build & Debug
 
 - **F5** launches the Extension Development Host with the extension loaded
-- `npm run compile` — one-shot build
-- `npm run watch` — watch mode for development
-- `npm run vsce-package` — create VSIX for distribution
-- `Installer\Build-Installer.ps1` — full installer build (compile + package + Inno Setup)
+- `npm run compile` - one-shot build
+- `npm run watch` - watch mode for development
+- `npm run vsce-package` - create a VSIX without the release gates, for a hand install
+- `Installer\Build-Installer.ps1` - full installer build (compile + package + verify + Inno Setup)
+
+## Releasing
+
+**`npm run publish-extension` is the only way a version reaches the public.** It runs, in order:
+preflight, the full test suite, a production build, package verification, and then publishes the
+exact file it just verified.
+
+- `npm run preflight` - refuses to go on unless `package.json` names a plain `major.minor.patch`
+  version, `CHANGELOG.md` has a `## [version]` section for it, and the Marketplace is currently
+  serving something older. It warns, without blocking, when the extension has uncommitted changes,
+  because the published build then matches no commit.
+- `npm run verify-package` - opens the built VSIX and checks the version in its manifest and its
+  inner `package.json` agree with this tree, that everything the extension needs at runtime is
+  present, and that no sources, tests, scripts, notes, source maps or nested packages rode along.
+  CI and the installer run this same script, so there is one definition of a good package.
+- `npm run release` - everything above except the publish, for a dry run.
+
+Publishing uses the stored `nullcity` publisher credential. `npx vsce ls-publishers` lists it, but
+that only proves a token was saved, not that it still works: an Azure DevOps Personal Access Token
+expires after at most a year, and an expired one fails at the publish step with
+`TF400813: The user ... is not authorized`. To restore it, mint a new token on
+<https://dev.azure.com> for **all accessible organizations** with the **Marketplace: Manage** scope,
+then `npx vsce login nullcity` and paste it at the prompt. Nothing else in the release path needs
+the token, so a package can always be built and verified without one.
+
+Do **not** reach for `vsce publish` directly. On its own it rebuilds from the working tree, so what
+reaches the public is not the artifact anything was checked against, and it skips every gate above.
+The Marketplace once sat on 1.1.3 while the repo had moved through 1.2.0 and 1.3.0, precisely
+because packaging and publishing were separate hand-run steps with nothing comparing the two.
 
 ## Agent Bridge API
 
@@ -140,18 +172,18 @@ ButtonFu exposes a **named-pipe JSON-RPC 2.0 bridge** that external agents can u
 The repo includes ready-to-use helper scripts for bridge communication in `buttonfu-extension/scripts/`:
 
 ```powershell
-# PowerShell — list all buttons
+# PowerShell - list all buttons
 .\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method listButtons
 
-# PowerShell — create a button
+# PowerShell - create a button
 .\buttonfu-extension\scripts\buttonfu-bridge.ps1 -Method createButton -Params '{"name":"Run Tests","locality":"Global","type":"TerminalCommand","executionText":"npm test"}'
 ```
 
 ```bash
-# Node.js — list all buttons
+# Node.js - list all buttons
 node buttonfu-extension/scripts/buttonfu-bridge.js listButtons
 
-# Node.js — create a button
+# Node.js - create a button
 node buttonfu-extension/scripts/buttonfu-bridge.js createButton '{"name":"Run Tests","locality":"Global","type":"TerminalCommand","executionText":"npm test"}'
 ```
 
@@ -266,7 +298,7 @@ This returns all available methods, parameter schemas, type definitions, example
 - VS Code Webview API for the editor UI (CSP with nonce)
 - Codicons for all iconography
 - VS Code theme CSS variables for consistent styling
-- No external runtime dependencies — the extension is self-contained
+- No external runtime dependencies - the extension is self-contained
 
 ## Testing Strategy
 
@@ -294,7 +326,7 @@ When explicitly requested (e.g. "run a live smoke test"), use the **Drive.NET** 
 4. `capture` screenshots for visual verification if needed.
 
 **Important caveats:**
-- Drive.NET MCP and CLI may **not be installed** on the development machine. Do **not** assume availability — check first (e.g. `tool_search_tool_regex` for `mcp_drive_net_*` tools, or `Get-Command DriveNet.Cli` in terminal). If unavailable, skip live testing and note the gap.
+- Drive.NET MCP and CLI may **not be installed** on the development machine. Do **not** assume availability - check first (e.g. `tool_search_tool_regex` for `mcp_drive_net_*` tools, or `Get-Command DriveNet.Cli` in terminal). If unavailable, skip live testing and note the gap.
 - Live smoke tests are **never run by default**. They are only executed when the user explicitly requests them.
 - The standard simulated test suite (`npm test`) must **always** pass before any live smoke test is attempted.
 - Review the checked-in Drive.NET manifests under `buttonfu-extension/tests/drive-net` before extending live smoke coverage so new flows stay aligned with the existing suites.

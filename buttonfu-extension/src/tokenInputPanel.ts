@@ -93,7 +93,7 @@ export class TokenInputPanel {
                     await this.executor.executeWithTokens(this.button, this.systemSnap, userValues);
                     this.panel.dispose();
                 } catch (err) {
-                    vscode.window.showErrorMessage(`ButtonFu: Failed to execute button — ${err}`);
+                    vscode.window.showErrorMessage(`ButtonFu: Failed to execute button - ${err}`);
                 }
                 break;
             }

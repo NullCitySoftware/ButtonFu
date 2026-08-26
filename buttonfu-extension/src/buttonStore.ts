@@ -31,7 +31,7 @@ function copyStringArray(value: unknown): string[] | undefined {
  * Global buttons are stored in VS Code global settings.
  * Local buttons are stored in workspace state.
  * Workspace buttons are read from the `buttonfu.workspaceButtons` setting
- * (typically committed by a repo in `.vscode/settings.json`) and are read-only —
+ * (typically committed by a repo in `.vscode/settings.json`) and are read-only -
  * no save path ever writes to that setting.
  */
 export class ButtonStore {
@@ -140,7 +140,7 @@ export class ButtonStore {
     /**
      * Get all workspace buttons from the `buttonfu.workspaceButtons` setting.
      * Entries are normalised/validated; unusable entries (no name) are skipped.
-     * Workspace buttons are read-only — they are never written back anywhere.
+     * Workspace buttons are read-only - they are never written back anywhere.
      */
     getWorkspaceButtons(): ButtonConfig[] {
         const config = vscode.workspace.getConfiguration('buttonfu');
@@ -245,12 +245,12 @@ export class ButtonStore {
 
     /**
      * Save a button (routes to global or local based on locality).
-     * Workspace buttons are read-only and are rejected — writes only ever
+     * Workspace buttons are read-only and are rejected - writes only ever
      * target the global settings store or workspace state.
      */
     async saveButton(button: ButtonConfig, actor: ButtonFuItemActor = 'User'): Promise<void> {
         if (button.locality === 'Workspace') {
-            throw new Error('Workspace buttons are read-only — they are defined in .vscode/settings.json (buttonfu.workspaceButtons).');
+            throw new Error('Workspace buttons are read-only - they are defined in .vscode/settings.json (buttonfu.workspaceButtons).');
         }
         const normalizedButton = this.migrateButton({
             ...button,
@@ -283,7 +283,7 @@ export class ButtonStore {
     /** Delete a button by ID. Workspace buttons are read-only and are never deleted. */
     async deleteButton(id: string): Promise<void> {
         if (this.isWorkspaceButton(id)) {
-            console.warn('ButtonFu: deleteButton ignored — workspace buttons are read-only (defined in .vscode/settings.json)');
+            console.warn('ButtonFu: deleteButton ignored - workspace buttons are read-only (defined in .vscode/settings.json)');
             return;
         }
 
@@ -341,7 +341,7 @@ export class ButtonStore {
             this._onDidChange.fire();
             return true;
         }
-        console.warn(`ButtonFu: reorderButton — button "${id}" not found in global or local lists`);
+        console.warn(`ButtonFu: reorderButton - button "${id}" not found in global or local lists`);
         return false;
     }
 

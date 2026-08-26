@@ -194,7 +194,7 @@ test('saveButton fires one change event per logical save, including cross-scope 
 });
 
 // ---------------------------------------------------------------------------
-// Workspace buttons (buttonfu.workspaceButtons — read-only settings source)
+// Workspace buttons (buttonfu.workspaceButtons - read-only settings source)
 // ---------------------------------------------------------------------------
 
 test('getWorkspaceButtons normalises minimal entries with defaults and a stable derived id', async () => {
@@ -231,7 +231,7 @@ test('getWorkspaceButtons skips unusable entries and rides warnBeforeExecution t
     await harness.vscode.workspace.getConfiguration('buttonfu').update('workspaceButtons', [
         null,
         'not-an-object',
-        { executionText: 'no name — skipped' },
+        { executionText: 'no name - skipped' },
         { name: '   ' },
         { name: 'Deploy', category: 'PDF Whiffle', icon: 'rocket', warnBeforeExecution: true, executionText: 'deploy.ps1' }
     ]);

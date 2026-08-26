@@ -189,7 +189,7 @@ tests:
         delay_after_ms: 1200
 
       - tool: capture
-        comment: Screenshot after save — the button should appear in the list.
+        comment: Screenshot after save - the button should appear in the list.
         args:
           output: button-crud-03-saved.png
         expect:

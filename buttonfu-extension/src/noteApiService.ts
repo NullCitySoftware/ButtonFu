@@ -1,7 +1,7 @@
 /**
  * Programmatic CRUD API for ButtonFu notes.
  *
- * Mirrors the button API surface. Every function is stateless — pass the
+ * Mirrors the button API surface. Every function is stateless - pass the
  * store in at the call site. The `openEditor` flag (if present) is stripped
  * before persistence and surfaced to the caller.
  */

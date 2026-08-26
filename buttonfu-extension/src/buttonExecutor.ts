@@ -37,7 +37,7 @@ export class ButtonExecutor {
         ]));
     }
 
-    /** Capture clipboard asynchronously and merge into snapshot — only if $Clipboard$ is used */
+    /** Capture clipboard asynchronously and merge into snapshot - only if $Clipboard$ is used */
     async captureClipboard(button: ButtonConfig, snap: TokenSnapshot): Promise<void> {
         const commandText = this.getAllCommandText(button);
         if (!/\$Clipboard\$/i.test(commandText)) {
@@ -117,7 +117,7 @@ export class ButtonExecutor {
             if (!usedLower.has(tokLower)) { continue; }
             if (tokLower in systemSnap) { continue; } // system token takes priority
             if (ut.defaultValue !== undefined && ut.defaultValue !== '') {
-                // Has a default — resolved
+                // Has a default - resolved
                 continue;
             }
             result.push({
@@ -235,7 +235,7 @@ export class ButtonExecutor {
                 await this.claudeSessions.launch(button);
                 break;
             default:
-                console.error(`ButtonFu: unexpected button type "${button.type}" — this may indicate an unmigrated legacy button`);
+                console.error(`ButtonFu: unexpected button type "${button.type}" - this may indicate an unmigrated legacy button`);
                 vscode.window.showErrorMessage(`Unknown button type: ${button.type}`);
         }
     }
@@ -275,7 +275,7 @@ export class ButtonExecutor {
         } else {
             // All independent: fire all terminals at once
             for (const tab of tabs) {
-                const terminal = vscode.window.createTerminal(`ButtonFu: ${button.name} — ${tab.name}`);
+                const terminal = vscode.window.createTerminal(`ButtonFu: ${button.name} - ${tab.name}`);
                 terminal.show();
                 const lines = tab.commands.split(/\r?\n/);
                 for (const line of lines) {
@@ -288,7 +288,7 @@ export class ButtonExecutor {
     /** Run a single terminal tab and wait for it to finish. Returns true on success, false on failure. */
     private runTerminalTabAndWait(button: ButtonConfig, tab: TerminalTab): Promise<boolean> {
         return new Promise<boolean>((resolve) => {
-            const terminal = vscode.window.createTerminal(`ButtonFu: ${button.name} — ${tab.name}`);
+            const terminal = vscode.window.createTerminal(`ButtonFu: ${button.name} - ${tab.name}`);
             terminal.show();
             let settled = false;
 
@@ -335,7 +335,7 @@ export class ButtonExecutor {
                                 tryExecute();
                             }
                         });
-                        // Fallback timeout — if shell integration never arrives, just send lines
+                        // Fallback timeout - if shell integration never arrives, just send lines
                         setTimeout(() => {
                             if (!terminal.shellIntegration) {
                                 siDisp?.dispose();

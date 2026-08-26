@@ -10,7 +10,7 @@
     This script exists so that humans and AI agents can talk to the bridge
     without hand-building named-pipe connections or JSON-RPC payloads.
 
-    IMPORTANT — Automation rule
+    IMPORTANT - Automation rule
     ─────────────────────────────
     All button and note mutations MUST go through the ButtonFu Agent Bridge
     or the registered buttonfu.api.* VS Code commands.

@@ -71,7 +71,7 @@ export class PromptTokenInputPanel {
                     await this.request.onExecute(userValues);
                     this.panel.dispose();
                 } catch (err) {
-                    vscode.window.showErrorMessage(`ButtonFu: Failed to execute — ${err}`);
+                    vscode.window.showErrorMessage(`ButtonFu: Failed to execute - ${err}`);
                 }
                 break;
             }

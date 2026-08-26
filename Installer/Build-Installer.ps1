@@ -139,17 +139,19 @@ if (-not $vsixFile) {
     throw "No VSIX package found in staging directory: $ExtensionStagingDir"
 }
 
-$expectedVsixName = "buttonfu-$Version.vsix"
-if ($vsixFile.Name -ne $expectedVsixName) {
-    throw "Expected VSIX package '$expectedVsixName' but found '$($vsixFile.Name)'."
+# One place knows what a good package looks like: the same verifier the release path and CI run.
+Push-Location $ExtensionDir
+try {
+    & node "scripts/verify-package.js" $vsixFile.FullName
+    if ($LASTEXITCODE -ne 0) {
+        throw "VSIX package verification failed."
+    }
 }
-
-if ($vsixFile.Length -le 0) {
-    throw "VSIX package '$($vsixFile.FullName)' is empty."
+finally {
+    Pop-Location
 }
 
 $vsixHash = (Get-FileHash -Path $vsixFile.FullName -Algorithm SHA256).Hash
-Write-Host "  VSIX package verified: $($vsixFile.Name)" -ForegroundColor Green
 Write-Host "  VSIX SHA256: $vsixHash" -ForegroundColor Gray
 Write-Host ""
 

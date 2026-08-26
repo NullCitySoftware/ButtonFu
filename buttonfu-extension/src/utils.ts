@@ -54,7 +54,7 @@ export function stripJsoncComments(text: string): string {
     const len = text.length;
     while (i < len) {
         const ch = text[i];
-        // String literal — copy verbatim including escapes
+        // String literal - copy verbatim including escapes
         if (ch === '"') {
             let j = i + 1;
             while (j < len) {

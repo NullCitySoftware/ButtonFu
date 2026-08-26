@@ -1,17 +1,28 @@
-.vscode/**
+# Sources and build inputs. The extension ships `out/extension.js`, nothing else.
 src/**
+esbuild.js
+tsconfig.json
+tsconfig.test.json
+*.esproj
+out/**/*.map
+
+# Build, lint and release tooling.
+scripts/**
+eslint.config.mjs
+
+# Internal material: the test suites, the working notes, the editor's own settings.
+tests/**
 .test-out/**
 docs/**
-out/**/*.map
-esbuild.js
-eslint.config.cjs
-eslint.config.mjs
-scripts/**
-tsconfig.test.json
-tsconfig.json
-*.esproj
+.vscode/**
 .gitignore
+.vscodeignore
+
+# Dependencies. Only the codicon font and stylesheet are needed at runtime.
 node_modules/**
 !node_modules/@vscode/codicons/dist/codicon.css
 !node_modules/@vscode/codicons/dist/codicon.ttf
 package-lock.json
+
+# Never let a previously built package end up inside the next one.
+*.vsix

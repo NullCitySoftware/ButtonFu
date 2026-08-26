@@ -6,20 +6,31 @@ const crypto = require('crypto');
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
-// Build number management (shared with installer)
-const buildInfoPath = path.join(__dirname, '..', 'Installer', 'Version.Build.txt');
-function getBuildNumber() {
-    let buildNumber = 0;
-    if (fs.existsSync(buildInfoPath)) {
-        try {
-            const content = fs.readFileSync(buildInfoPath, 'utf-8').trim();
-            buildNumber = parseInt(content, 10);
-            if (isNaN(buildNumber)) buildNumber = 0;
-        } catch (e) {
-            buildNumber = 0;
-        }
+// The build number is shared with the installer, which stamps it into the setup executable.
+// A production build claims the next one and writes it back; a development build only reads,
+// so an ordinary compile never dirties the tree.
+const buildNumberPath = path.join(__dirname, '..', 'Installer', 'Version.Build.txt');
+
+function readBuildNumber() {
+    if (!fs.existsSync(buildNumberPath)) {
+        return 0;
     }
-    return buildNumber;
+
+    const parsed = parseInt(fs.readFileSync(buildNumberPath, 'utf-8').trim(), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function nextBuildNumber() {
+    const claimed = readBuildNumber() + 1;
+    fs.writeFileSync(buildNumberPath, `${claimed}
+`, 'utf-8');
+    return claimed;
+}
+
+// esbuild appends to `out/`, so a file left behind by an older layout would ship inside the
+// package for as long as nobody noticed. A production build starts from an empty directory.
+function cleanOutputDirectory() {
+    fs.rmSync(path.join(__dirname, 'out'), { recursive: true, force: true });
 }
 
 // Get version from package.json
@@ -33,7 +44,11 @@ function getVersion() {
 }
 
 async function main() {
-    const buildNumber = getBuildNumber();
+    if (production) {
+        cleanOutputDirectory();
+    }
+
+    const buildNumber = production ? nextBuildNumber() : readBuildNumber();
     const buildTime = new Date();
     const buildTimeFormatted = buildTime.toLocaleString('en-GB', {
         day: '2-digit',

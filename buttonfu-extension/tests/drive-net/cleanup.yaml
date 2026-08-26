@@ -1,5 +1,5 @@
 # Closes the Extension Development Host window at the end of a manifest run.
-# The save-changes modal is conditional — the host may close cleanly
+# The save-changes modal is conditional - the host may close cleanly
 # without prompting, so every save-related step is gated by a `when`.
 
 name: Extension Host Cleanup

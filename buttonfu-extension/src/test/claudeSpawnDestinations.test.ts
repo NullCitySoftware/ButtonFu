@@ -183,11 +183,28 @@ test('backgroundAgent spawns the CLI directly with --bg and no launcher script',
 });
 
 test('backgroundAgent does not inherit this window IDE port, because it outlives the window', async () => {
-    const { service, spawns } = createFixtures();
+    // The variable has to be put there on purpose. A terminal inside VS Code with the Claude
+    // extension running already has one, and a plain shell does not, so a test that only reads the
+    // ambient environment passes or fails according to where it was run rather than what the code
+    // does. This is how the missing `delete` survived: it only showed up in a VS Code terminal.
+    const previous = process.env.CLAUDE_CODE_SSE_PORT;
+    process.env.CLAUDE_CODE_SSE_PORT = '48622';
 
-    await service.launch(claudeButton({ claudeDestination: 'backgroundAgent' }));
+    try {
+        const { service, spawns } = createFixtures();
 
-    assert.equal(spawns[0].env.CLAUDE_CODE_SSE_PORT, undefined);
+        await service.launch(claudeButton({ claudeDestination: 'backgroundAgent' }));
+
+        assert.equal(spawns[0].env.CLAUDE_CODE_SSE_PORT, undefined);
+        assert.equal(process.env.CLAUDE_CODE_SSE_PORT, '48622',
+            'The extension host keeps its own port; only the child is stripped of it.');
+    } finally {
+        if (previous === undefined) {
+            delete process.env.CLAUDE_CODE_SSE_PORT;
+        } else {
+            process.env.CLAUDE_CODE_SSE_PORT = previous;
+        }
+    }
 });
 
 test('backgroundAgent tells the user it started, and offers the agents list', async () => {

@@ -97,7 +97,7 @@ function buildBridgeSelfTestText(bridgeEnabled: boolean, bridgeRunning: boolean,
     ];
 
     for (const check of checks) {
-        lines.push(`- ${check.ok ? 'PASS' : 'FAIL'}: ${check.name} — ${check.detail}`);
+        lines.push(`- ${check.ok ? 'PASS' : 'FAIL'}: ${check.name} - ${check.detail}`);
     }
 
     if (currentBridge) {
@@ -292,7 +292,7 @@ export function registerAgentBridgeCommands(context: vscode.ExtensionContext, ge
             const currentBridge = getCurrentBridge(bridges);
 
             const lines: string[] = [
-                '# ButtonFu Agent Bridge — Automation Instructions',
+                '# ButtonFu Agent Bridge - Automation Instructions',
                 '',
                 '## Rule: use the bridge, never edit storage directly',
                 '',
@@ -466,7 +466,7 @@ export function registerAgentBridgeCommands(context: vscode.ExtensionContext, ge
             ];
 
             for (const check of checks) {
-                lines.push(`- ${check.ok ? 'PASS' : 'FAIL'}: ${check.name} — ${check.detail}`);
+                lines.push(`- ${check.ok ? 'PASS' : 'FAIL'}: ${check.name} - ${check.detail}`);
             }
 
             if (failing.length > 0) {

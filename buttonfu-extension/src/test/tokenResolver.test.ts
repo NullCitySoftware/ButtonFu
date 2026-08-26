@@ -27,7 +27,7 @@ test('findTokensInText returns empty array when no tokens are present', () => {
 
 test('findTokensInText returns all tokens found in order', () => {
     const { findTokensInText } = loadTokenResolver();
-    const tokens = findTokensInText('Run $Date$ — user: $Username$ done');
+    const tokens = findTokensInText('Run $Date$ - user: $Username$ done');
     assert.deepEqual(tokens, ['$Date$', '$Username$']);
 });
 

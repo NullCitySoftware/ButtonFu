@@ -18,12 +18,16 @@ All notable changes to ButtonFu are documented here.
 - **New settings**: `buttonfu.claude.executablePath`, `buttonfu.claude.defaultPermissionMode`, `buttonfu.claude.externalTerminalCommand`, `buttonfu.claude.handoffTimeoutSeconds` and `buttonfu.claude.allowBridgeRun`.
 
 ### Fixed
+- A background agent no longer holds on to the window that started it. It was being handed that
+  window's connection to VS Code, which dies when the window closes, leaving the agent talking
+  to something that is no longer there. A background agent is the one destination meant to
+  outlive its window, so it now starts without that connection at all.
 - The sidebar panel no longer falls back to older content after being hidden and shown again. Hiding the panel tears its contents down, and VS Code brings them back from the last full document ButtonFu wrote, so changes delivered while it was on screen were lost on the next hide and show, and changes made while it was hidden never arrived at all. A deleted button could reappear and the column count could snap back.
 
 ## [1.2.0] - 2026-07-16
 
 ### Added
-- **Repo-committed workspace buttons** — a new read-only button source, the window-scoped `buttonfu.workspaceButtons` setting, lets a repository commit its buttons in `.vscode/settings.json`. Workspace buttons render in the workspace section grouped by category and execute like any other button (including `warnBeforeExecution`), but edit/delete are disabled in the UI (tooltip: "Defined in .vscode/settings.json") and no save path ever writes to the setting. Entries need no `id` — a stable id is derived from the name, category, and execution text — and sensible defaults apply (`type: "TerminalCommand"`, `category: "General"`, `icon: "play"`). The sidebar refreshes automatically when the setting changes, and `buttonfu.api.listButtons` accepts `{ "locality": "Workspace" }` while the update/delete API commands reject workspace buttons as read-only.
+- **Repo-committed workspace buttons** - a new read-only button source, the window-scoped `buttonfu.workspaceButtons` setting, lets a repository commit its buttons in `.vscode/settings.json`. Workspace buttons render in the workspace section grouped by category and execute like any other button (including `warnBeforeExecution`), but edit/delete are disabled in the UI (tooltip: "Defined in .vscode/settings.json") and no save path ever writes to the setting. Entries need no `id` - a stable id is derived from the name, category, and execution text - and sensible defaults apply (`type: "TerminalCommand"`, `category: "General"`, `icon: "play"`). The sidebar refreshes automatically when the setting changes, and `buttonfu.api.listButtons` accepts `{ "locality": "Workspace" }` while the update/delete API commands reject workspace buttons as read-only.
 
   ```json
   "buttonfu.workspaceButtons": [
@@ -43,8 +47,8 @@ All notable changes to ButtonFu are documented here.
 ## [1.1.1] - 2026-04-14
 
 ### Added
-- **Notes in the main sidebar** — ButtonFu now supports Global and Workspace notes directly in the main sidebar, grouped alongside buttons and supporting plain-text or Markdown content, preview/open, copy, insert, send-to-Copilot, and edit actions
-- **Show Notes option** — the Options page now includes a `Show Notes` toggle that hides or reveals notes while preserving stored note data
+- **Notes in the main sidebar** - ButtonFu now supports Global and Workspace notes directly in the main sidebar, grouped alongside buttons and supporting plain-text or Markdown content, preview/open, copy, insert, send-to-Copilot, and edit actions
+- **Show Notes option** - the Options page now includes a `Show Notes` toggle that hides or reveals notes while preserving stored note data
 - Hidden button and note CRUD commands for agent-driven automation, including batch operations and structured results
 
 ### Fixed
@@ -61,7 +65,7 @@ All notable changes to ButtonFu are documented here.
 ## [1.0.7] - 2026-03-28
 
 ### Fixed
-- Sequential multi-terminal execution now correctly runs all tabs — the final tab's promise was never awaited, causing the second (and any subsequent) tab to silently not execute even when the previous tab completed successfully
+- Sequential multi-terminal execution now correctly runs all tabs - the final tab's promise was never awaited, causing the second (and any subsequent) tab to silently not execute even when the previous tab completed successfully
 
 ## [1.0.6] - 2026-03-28
 
@@ -90,23 +94,23 @@ All notable changes to ButtonFu are documented here.
 ## [1.0.4] - 2026-03-26
 
 ### Added
-- **Keyboard shortcuts** — every button registers a unique VS Code command (`buttonfu.run.<id>`) so it can be targeted by keybindings; the editor shows a **Set Keyboard Shortcut** button (visible when editing an existing button) that opens the VS Code keybindings editor pre-filtered to that button's command; any assigned shortcut is read from `keybindings.json` and displayed on the button's card in the editor list
-- **Multi-terminal execution** — Terminal Command buttons can define multiple named tabs, each with its own command text; tabs run in **parallel** by default, or switch to **sequential** mode when any tab has the *Dependent On Previous Terminal Success* flag set — a dependent tab only runs if its predecessor exits with code 0, and the chain halts on the first failure; each tab opens in its own VS Code terminal named `ButtonFu: <button> — <tab>`; uses VS Code shell integration (1.93+) for accurate exit-code detection with a three-second fallback to close-detection for older environments; the tab bar supports add, rename (double-click or F2), delete, and left/right reorder
-- **Pastel colour presets** — a second row of ten soft pastel swatches (Pastel Blue, Green, Peach, Coral, Lavender, Yellow, Teal, Rose, Periwinkle, Taupe) has been added beneath the existing vivid colour row in the button editor colour picker
+- **Keyboard shortcuts** - every button registers a unique VS Code command (`buttonfu.run.<id>`) so it can be targeted by keybindings; the editor shows a **Set Keyboard Shortcut** button (visible when editing an existing button) that opens the VS Code keybindings editor pre-filtered to that button's command; any assigned shortcut is read from `keybindings.json` and displayed on the button's card in the editor list
+- **Multi-terminal execution** - Terminal Command buttons can define multiple named tabs, each with its own command text; tabs run in **parallel** by default, or switch to **sequential** mode when any tab has the *Dependent On Previous Terminal Success* flag set - a dependent tab only runs if its predecessor exits with code 0, and the chain halts on the first failure; each tab opens in its own VS Code terminal named `ButtonFu: <button> - <tab>`; uses VS Code shell integration (1.93+) for accurate exit-code detection with a three-second fallback to close-detection for older environments; the tab bar supports add, rename (double-click or F2), delete, and left/right reorder
+- **Pastel colour presets** - a second row of ten soft pastel swatches (Pastel Blue, Green, Peach, Coral, Lavender, Yellow, Teal, Rose, Periwinkle, Taupe) has been added beneath the existing vivid colour row in the button editor colour picker
 
 ## [1.0.3] - 2026-03-24
 
 ### Added
-- **Warn Before Execution** — optional confirmation dialog per button; enable the toggle in the editor to require a click-through before the command runs
-- **Token system** — embed `$TokenName$` placeholders anywhere in a command or Copilot prompt; tokens are resolved at execution time
+- **Warn Before Execution** - optional confirmation dialog per button; enable the toggle in the editor to require a click-through before the command runs
+- **Token system** - embed `$TokenName$` placeholders anywhere in a command or Copilot prompt; tokens are resolved at execution time
   - **System tokens** (26 built-in, auto-resolved): workspace path/name, active file (full path, name, extension, directory, relative path), selected text, line/column number, current line text, button name/type, date/time (ISO, date-only, time-only), platform, hostname, username, home directory, temp directory, clipboard contents, git branch, path separator, EOL, and a random UUID
-  - **User tokens** — define custom tokens per button with name, data type (String, Multi-Line String, Integer, Boolean), display label, description, optional default value, and a Required toggle
-  - **Token questionnaire panel** — when a button is executed and unresolved user tokens exist, a dedicated panel collects their values before running; shows a live preview of all resolved tokens
-  - **Drag-and-drop** — drag any token row from the token table directly into the command/prompt field; token is inserted at the caret position
-- **Two-column editor layout** — the button editor is now split into a left column (all existing fields) and a right column (tokens panel), keeping the form compact
-- **Token table UI** — section headers (`System Tokens` / `User Tokens`) with vertically centred icon and text; separate Value and DataType columns; edit/delete actions appear as a hover overlay floating over the right side of the row (hidden by default, page-background fill so text doesn't bleed through)
+  - **User tokens** - define custom tokens per button with name, data type (String, Multi-Line String, Integer, Boolean), display label, description, optional default value, and a Required toggle
+  - **Token questionnaire panel** - when a button is executed and unresolved user tokens exist, a dedicated panel collects their values before running; shows a live preview of all resolved tokens
+  - **Drag-and-drop** - drag any token row from the token table directly into the command/prompt field; token is inserted at the caret position
+- **Two-column editor layout** - the button editor is now split into a left column (all existing fields) and a right column (tokens panel), keeping the form compact
+- **Token table UI** - section headers (`System Tokens` / `User Tokens`) with vertically centred icon and text; separate Value and DataType columns; edit/delete actions appear as a hover overlay floating over the right side of the row (hidden by default, page-background fill so text doesn't bleed through)
 - **Card meta line enhancements**
-  - `Tokenised [n]` badge — shows the count of unique tokens used in the command/prompt; only shown when at least one token is present
+  - `Tokenised [n]` badge - shows the count of unique tokens used in the command/prompt; only shown when at least one token is present
   - Copilot model name displayed for Copilot Command buttons (falls back to `auto` if none set)
 - Up/down reorder arrows are now correctly disabled when a button is the only item in its category group
 - Button list cards are constrained to the same max-width as the Options page and centred, keeping lines readable at large panel widths
@@ -115,13 +119,13 @@ All notable changes to ButtonFu are documented here.
 ### Fixed
 - Duplicating a button now correctly carries over all fields (colour, locality, icon, Copilot settings) into the editor and persists them on save
 - Colour swatch selection is now synced when the editor opens, so the active swatch is highlighted for both new and duplicated buttons
-- Token name input normalises `$` wrapping on save — any combination of leading/trailing `$` signs is corrected to exactly one on each side, so `$$MyToken$$`, `MyToken`, and `$MyToken` all save as `$MyToken$`
+- Token name input normalises `$` wrapping on save - any combination of leading/trailing `$` signs is corrected to exactly one on each side, so `$$MyToken$$`, `MyToken`, and `$MyToken` all save as `$MyToken$`
 - Newly added or edited user tokens scroll into view in the token table after saving
 
 ## [1.0.2] - 2026-03-24
 
 ### Added
-- **Attach active file** toggle on Copilot buttons — when enabled, the currently open editor file is automatically attached to the chat when the button is executed
+- **Attach active file** toggle on Copilot buttons - when enabled, the currently open editor file is automatically attached to the chat when the button is executed
 
 ### Fixed
 - Autocomplete and icon picker dropdowns no longer open automatically when background data (tasks, commands, models) finishes loading; they only appear when the relevant field has focus
@@ -142,8 +146,8 @@ All notable changes to ButtonFu are documented here.
 - Global buttons available in every workspace
 - Workspace-scoped buttons specific to each project
 - Visual editor for creating and configuring buttons
-- **Terminal Command** button type — run shell commands in the integrated terminal
-- **Command Palette Action** button type — execute any VS Code command by ID
-- **Task Execution** button type — run tasks defined in `tasks.json`
-- **Copilot Command** button type — send prompts to GitHub Copilot Chat with model and mode control
+- **Terminal Command** button type - run shell commands in the integrated terminal
+- **Command Palette Action** button type - execute any VS Code command by ID
+- **Task Execution** button type - run tasks defined in `tasks.json`
+- **Copilot Command** button type - send prompts to GitHub Copilot Chat with model and mode control
 - Codicon icon picker for all buttons

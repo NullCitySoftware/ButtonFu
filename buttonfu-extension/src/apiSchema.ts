@@ -189,7 +189,7 @@ const methods: ApiMethodSchema[] = [
     {
         method: 'buttonfu.api.updateButton',
         description: 'Update an existing button. Pass the id plus any fields to change. Workspace buttons (locality "Workspace") are read-only and cannot be updated.',
-        params: '{ id: string, ...fields }  — accepts all ButtonConfig fields except id',
+        params: '{ id: string, ...fields }  - accepts all ButtonConfig fields except id',
         returns: 'ApiResult<ButtonConfig>'
     },
     {
@@ -225,7 +225,7 @@ const methods: ApiMethodSchema[] = [
     {
         method: 'buttonfu.api.updateNote',
         description: 'Update an existing note. Pass the id plus any fields to change.',
-        params: '{ id: string, ...fields }  — accepts all NoteConfig fields except id and updatedAt',
+        params: '{ id: string, ...fields }  - accepts all NoteConfig fields except id and updatedAt',
         returns: 'ApiResult<NoteConfig>'
     },
     {
@@ -266,7 +266,7 @@ const methods: ApiMethodSchema[] = [
         method: 'buttonfu.api.listBridges',
         description: 'List all live bridge files (stale bridges are cleaned first). Auth tokens are redacted. Use this to discover other VS Code windows and select the correct bridge for workspace-targeted operations.',
         params: 'undefined (no parameters)',
-        returns: '{ bridges: BridgeInfo[] }  — authToken omitted from each entry'
+        returns: '{ bridges: BridgeInfo[] }  - authToken omitted from each entry'
     }
 ];
 
@@ -279,7 +279,7 @@ export const AUTOMATION_GUIDANCE: AutomationGuidance = {
         'ButtonFu Agent Bridge (named-pipe JSON-RPC 2.0) and the registered buttonfu.api.* VS Code commands.',
     supportedMutationSurface:
         'All button and note mutations MUST go through buttonfu.api.createButton, buttonfu.api.updateButton, ' +
-        'buttonfu.api.deleteButton, buttonfu.api.createNote, buttonfu.api.updateNote, and buttonfu.api.deleteNote — ' +
+        'buttonfu.api.deleteButton, buttonfu.api.createNote, buttonfu.api.updateNote, and buttonfu.api.deleteNote - ' +
         'either via the Agent Bridge named pipe or via vscode.commands.executeCommand() from a co-hosted extension.',
     unsupportedAutomationMutationSurfaces: [
         'VS Code workspace storage (state.vscdb / context.workspaceState)',
@@ -328,14 +328,14 @@ export function buildApiSchema(extensionVersion: string): ApiSchemaRoot {
             BridgeContext: bridgeContextFields
         },
         errorCodes: {
-            [-32700]: 'Parse error — malformed JSON.',
-            [-32600]: 'Invalid request — not a valid JSON-RPC 2.0 object.',
-            [-32601]: 'Method not found — method is not in the allowlist.',
-            [-32603]: 'Internal error — command execution failed.',
-            [-32000]: 'Authentication failed — missing or wrong auth token.',
-            [-32001]: 'Rate limited — exceeded 60 requests per 60 seconds.',
-            [-32002]: 'Message too large — exceeds 1 MB limit.',
-            [-32003]: 'Workspace mismatch — targetWindowId does not match this bridge.'
+            [-32700]: 'Parse error - malformed JSON.',
+            [-32600]: 'Invalid request - not a valid JSON-RPC 2.0 object.',
+            [-32601]: 'Method not found - method is not in the allowlist.',
+            [-32603]: 'Internal error - command execution failed.',
+            [-32000]: 'Authentication failed - missing or wrong auth token.',
+            [-32001]: 'Rate limited - exceeded 60 requests per 60 seconds.',
+            [-32002]: 'Message too large - exceeds 1 MB limit.',
+            [-32003]: 'Workspace mismatch - targetWindowId does not match this bridge.'
         }
     };
 }

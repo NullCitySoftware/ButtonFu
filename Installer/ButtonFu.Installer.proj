@@ -8,8 +8,6 @@
     <None Include="License.rtf" />
     <None Include="Build-Installer.ps1" />
     <None Include="Deployment.md" />
-    <None Include="Version.Base.txt" />
     <None Include="Version.Build.txt" />
-    <None Include="Version.Moniker.txt" />
   </ItemGroup>
 </Project>

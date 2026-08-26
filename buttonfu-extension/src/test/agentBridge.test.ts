@@ -204,7 +204,7 @@ test('bridge start is idempotent', async () => {
     const bridge = new AgentBridge(exec, logger);
 
     await bridge.start();
-    await bridge.start(); // second call — should not throw
+    await bridge.start(); // second call - should not throw
     assert.equal(bridge.isRunning, true);
 
     await bridge.stop();
@@ -217,7 +217,7 @@ test('bridge stop is idempotent', async () => {
 
     await bridge.start();
     await bridge.stop();
-    await bridge.stop(); // second call — should not throw
+    await bridge.stop(); // second call - should not throw
     assert.equal(bridge.isRunning, false);
 });
 
@@ -847,9 +847,9 @@ test('describe returns API schema with methods, types, and error codes', async (
         assert.ok(schema.types.BridgeContext);
 
         // Error codes documented (including new workspace mismatch)
-        assert.equal(schema.errorCodes[-32000], 'Authentication failed — missing or wrong auth token.');
-        assert.equal(schema.errorCodes[-32601], 'Method not found — method is not in the allowlist.');
-        assert.equal(schema.errorCodes[-32003], 'Workspace mismatch — targetWindowId does not match this bridge.');
+        assert.equal(schema.errorCodes[-32000], 'Authentication failed - missing or wrong auth token.');
+        assert.equal(schema.errorCodes[-32601], 'Method not found - method is not in the allowlist.');
+        assert.equal(schema.errorCodes[-32003], 'Workspace mismatch - targetWindowId does not match this bridge.');
 
         // Authentication guidance present
         assert.ok(schema.authentication.includes('auth'));

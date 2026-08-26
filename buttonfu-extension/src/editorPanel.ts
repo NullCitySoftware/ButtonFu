@@ -258,7 +258,7 @@ export class ButtonEditorPanel {
                     || typeof btn.locality !== 'string'
                     || !['Global', 'Local'].includes(btn.locality)
                 ) {
-                    console.warn('ButtonFu: saveButton rejected — invalid button data from webview');
+                    console.warn('ButtonFu: saveButton rejected - invalid button data from webview');
                     break;
                 }
                 // Enforce reasonable string lengths
@@ -268,7 +268,7 @@ export class ButtonEditorPanel {
                     || ((btn.description ?? '') as string).length > 5000
                     || ((btn.category ?? '') as string).length > 200
                 ) {
-                    console.warn('ButtonFu: saveButton rejected — field length exceeded');
+                    console.warn('ButtonFu: saveButton rejected - field length exceeded');
                     break;
                 }
                 await this.store.saveButton({ ...btn, ...this.claudeFieldsFrom(btn) } as ButtonConfig);
@@ -437,7 +437,7 @@ export class ButtonEditorPanel {
                     || typeof note.locality !== 'string'
                     || !['Global', 'Local'].includes(note.locality)
                 ) {
-                    console.warn('ButtonFu: saveNote rejected — invalid note data from webview');
+                    console.warn('ButtonFu: saveNote rejected - invalid note data from webview');
                     break;
                 }
                 const MAX_LEN = 100_000;
@@ -445,7 +445,7 @@ export class ButtonEditorPanel {
                     || ((note.content ?? '') as string).length > MAX_LEN
                     || ((note.category ?? '') as string).length > 200
                 ) {
-                    console.warn('ButtonFu: saveNote rejected — field length exceeded');
+                    console.warn('ButtonFu: saveNote rejected - field length exceeded');
                     break;
                 }
                 try {
@@ -3301,7 +3301,7 @@ ${sharedControlScript}
 
             switch (type) {
                 case 'TerminalCommand':
-                    // no execLabel/execHelp needed — tabs UI handles it
+                    // no execLabel/execHelp needed - tabs UI handles it
                     break;
                 case 'PaletteAction':
                     execLabel.textContent = 'Palette Action';
@@ -3510,7 +3510,7 @@ ${sharedControlScript}
             tabEl.style.position = '';
         }
 
-        // Terminal tab bar — event delegation
+        // Terminal tab bar - event delegation
         document.getElementById('terminalTabsBar').addEventListener('click', (e) => {
             if (!(e.target instanceof Element)) { return; }
             const moveLeft  = e.target.closest('[data-terminal-move-left]');
@@ -3959,11 +3959,11 @@ ${sharedControlScript}
             }
             token = '$' + token.replace(/^\\$+/, '').replace(/\\$+$/, '') + '$';
             if (!/^\\$[A-Za-z_][A-Za-z0-9_]*\\$$/.test(token)) {
-                setNoteTokenError('Must be $Identifier$ — letters, digits, underscores only (e.g. $MyToken$)');
+                setNoteTokenError('Must be $Identifier$ - letters, digits, underscores only (e.g. $MyToken$)');
                 return;
             }
             if (SYSTEM_TOKENS.some(st => st.token.toLowerCase() === token.toLowerCase())) {
-                setNoteTokenError('This name conflicts with a system token — choose a different name');
+                setNoteTokenError('This name conflicts with a system token - choose a different name');
                 return;
             }
             const dupIdx = noteUserTokens.findIndex((entry, i) => entry.token.toLowerCase() === token.toLowerCase() && i !== noteEditingTokenIndex);
@@ -4350,7 +4350,7 @@ ${sharedControlScript}
             }
         });
 
-        // Button cards — document-level delegation (covers dynamically rendered content)
+        // Button cards - document-level delegation (covers dynamically rendered content)
         document.addEventListener('click', (e) => {
             const del = e.target.closest('[data-delete-id]');
             if (del) { e.stopPropagation(); confirmDelete(del.dataset.deleteId); return; }
@@ -4376,13 +4376,13 @@ ${sharedControlScript}
             if (noteCard && !e.target.closest('[data-note-delete-id],[data-note-move-up-id],[data-note-move-down-id],[data-note-edit-id]')) { editNote(noteCard.dataset.noteId); }
         });
 
-        // Autocomplete — event delegation
+        // Autocomplete - event delegation
         document.getElementById('autocompleteList').addEventListener('mousedown', (e) => {
             const item = e.target.closest('[data-autocomplete-value]');
             if (item) selectAutocomplete(item.dataset.autocompleteValue);
         });
 
-        // File chips — event delegation
+        // File chips - event delegation
         document.getElementById('fileChips').addEventListener('click', (e) => {
             const remove = e.target.closest('[data-file-index]');
             if (remove) removeFile(parseInt(remove.dataset.fileIndex));
@@ -4395,7 +4395,7 @@ ${sharedControlScript}
             setTimeout(() => document.getElementById('workspaceFileList').classList.remove('visible'), 200);
         });
 
-        // Workspace file autocomplete — event delegation
+        // Workspace file autocomplete - event delegation
         document.getElementById('workspaceFileList').addEventListener('mousedown', (e) => {
             const item = e.target.closest('[data-workspace-file]');
             if (item) addWorkspaceFile(item.dataset.workspaceFile);
@@ -4508,12 +4508,12 @@ ${sharedControlScript}
             token = '$' + token.replace(/^\\$+/, '').replace(/\\$+$/, '') + '$';
             // Validate format: $Identifier$
             if (!/^\\$[A-Za-z_][A-Za-z0-9_]*\\$$/.test(token)) {
-                setTokenError('Must be $Identifier$ — letters, digits, underscores only (e.g. $MyToken$)');
+                setTokenError('Must be $Identifier$ - letters, digits, underscores only (e.g. $MyToken$)');
                 return;
             }
             // Check for system token collision (case-insensitive)
             if (SYSTEM_TOKENS.some(st => st.token.toLowerCase() === token.toLowerCase())) {
-                setTokenError('This name conflicts with a system token — choose a different name');
+                setTokenError('This name conflicts with a system token - choose a different name');
                 return;
             }
             // Check for duplicate user token (except when editing the same index)
@@ -4566,7 +4566,7 @@ ${sharedControlScript}
                 tbody.addEventListener('dragstart', onTokenDragStart);
                 tbody.addEventListener('dragend', onTokenDragEnd);
 
-                // Drop targets — wire once on both exec fields + terminal commands textarea
+                // Drop targets - wire once on both exec fields + terminal commands textarea
                 const termCmds = document.getElementById('terminal-tab-commands');
                 [execText, execPicker, termCmds].forEach(target => {
                     if (!target) { return; }
@@ -4616,7 +4616,7 @@ ${sharedControlScript}
             }
         }
 
-        // Token button events — use delegation on the form container to avoid null issues
+        // Token button events - use delegation on the form container to avoid null issues
         document.getElementById('userTokenForm').addEventListener('click', (e) => {
             if (e.target.closest('#utSaveBtn')) { saveUserToken(); return; }
             if (e.target.closest('#utCancelBtn')) { hideUserTokenForm(); return; }

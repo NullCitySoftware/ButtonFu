@@ -28,10 +28,10 @@ export type ClaudeDestination =
 
 /**
  * Where the button is stored.
- * - 'Global' — VS Code user settings (`buttonfu.globalButtons`, machine scope).
- * - 'Local' — workspace state (Memento).
- * - 'Workspace' — the read-only `buttonfu.workspaceButtons` setting, typically committed
- *   by a repo in `.vscode/settings.json`. Workspace buttons need no `id` in settings —
+ * - 'Global' - VS Code user settings (`buttonfu.globalButtons`, machine scope).
+ * - 'Local' - workspace state (Memento).
+ * - 'Workspace' - the read-only `buttonfu.workspaceButtons` setting, typically committed
+ *   by a repo in `.vscode/settings.json`. Workspace buttons need no `id` in settings -
  *   a stable id is derived at load time (see {@link deriveWorkspaceButtonId}).
  */
 export type ButtonLocality = 'Global' | 'Local' | 'Workspace';
@@ -242,7 +242,7 @@ export interface NoteConfig {
     format: NoteContentFormat;
     /** Default action for the main split-button click */
     defaultAction: NoteDefaultAction;
-    /** @deprecated No longer used — token resolution is automatic. Kept for migration only. */
+    /** @deprecated No longer used - token resolution is automatic. Kept for migration only. */
     promptEnabled?: boolean;
     /** For Copilot prompt actions: which model to use */
     copilotModel: string;
@@ -323,8 +323,8 @@ export const SYSTEM_TOKENS: SystemTokenDef[] = [
     { token: '$Date$', description: 'Current date (YYYY-MM-DD)', dataType: 'String' },
     { token: '$Time$', description: 'Current time (HH:MM:SS)', dataType: 'String' },
     { token: '$Platform$', description: 'Operating system platform (win32, darwin, linux)', dataType: 'String' },
-    { token: '$Hostname$', description: 'Computer hostname (sensitive — may be sent to external services if used in Copilot prompts)', dataType: 'String' },
-    { token: '$Username$', description: 'Current OS username (sensitive — may be sent to external services if used in Copilot prompts)', dataType: 'String' },
+    { token: '$Hostname$', description: 'Computer hostname (sensitive - may be sent to external services if used in Copilot prompts)', dataType: 'String' },
+    { token: '$Username$', description: 'Current OS username (sensitive - may be sent to external services if used in Copilot prompts)', dataType: 'String' },
     { token: '$HomeDirectory$', description: 'User home directory path', dataType: 'String' },
     { token: '$TempDirectory$', description: 'System temporary directory path', dataType: 'String' },
     { token: '$Clipboard$', description: 'Current clipboard text contents', dataType: 'String' },

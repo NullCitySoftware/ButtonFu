@@ -408,16 +408,22 @@ export class ClaudeSessionService {
      * Starts a background agent and returns straight away.
      *
      * No launcher script and no shell: `spawn` takes the argument list directly, which is the
-     * plainest form of the rule that a prompt never touches a command line. The IDE port is
-     * deliberately not passed, because the agent is meant to outlive the window that started it,
-     * and a port that dies with that window is worse than no connection at all.
+     * plainest form of the rule that a prompt never touches a command line.
+     *
+     * The IDE port is removed rather than merely not added. The agent is meant to outlive the
+     * window that started it, and a port that dies with that window is worse than no connection at
+     * all. Whether the extension host carries `CLAUDE_CODE_SSE_PORT` depends on how it was started,
+     * so inheriting the environment and hoping the variable is absent leaves the guarantee to luck.
      */
     private launchBackgroundAgent(
         request: ClaudeLaunchRequest,
         executable: ResolvedClaudeExecutable,
         args: string[]
     ): void {
-        const child = this.spawnDetached(executable.path, args, request.cwd, { ...process.env }, 'pipe');
+        const env = { ...process.env };
+        delete env.CLAUDE_CODE_SSE_PORT;
+
+        const child = this.spawnDetached(executable.path, args, request.cwd, env, 'pipe');
 
         let stderr = '';
         child.stdout?.on('data', (chunk: Buffer) => logClaude(`agent out: ${chunk.toString().trimEnd()}`));

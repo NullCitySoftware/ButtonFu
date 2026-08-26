@@ -67,7 +67,7 @@ test('sendToCopilot leaves the prompt on the clipboard when submission fails', a
 
 test('sendToCopilot aborts early when no chat focus command is available', async () => {
     const harness = createFakeVscodeHarness();
-    // Do NOT register the focus command — simulates Copilot Chat unavailable.
+    // Do NOT register the focus command - simulates Copilot Chat unavailable.
     const modulePath = path.resolve(__dirname, '..', 'promptActionService.js');
     const promptModule = loadWithPatchedVscode<{ PromptActionService: new () => any }>(modulePath, harness.vscode);
     const service = new promptModule.PromptActionService();

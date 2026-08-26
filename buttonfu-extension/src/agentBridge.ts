@@ -277,7 +277,7 @@ export function cleanStaleBridgeFiles(): void {
     try {
         entries = fs.readdirSync(dir);
     } catch {
-        return; // directory doesn't exist yet — nothing to clean
+        return; // directory doesn't exist yet - nothing to clean
     }
 
     const now = Date.now();
@@ -297,7 +297,7 @@ export function cleanStaleBridgeFiles(): void {
                 fs.unlinkSync(filePath);
             }
         } catch {
-            // Corrupt or unreadable — remove it
+            // Corrupt or unreadable - remove it
             try { fs.unlinkSync(filePath); } catch { /* best effort */ }
         }
     }
@@ -324,7 +324,7 @@ export function listBridgeFiles(): Array<Omit<BridgeInfo, 'authToken'>> {
             const raw = fs.readFileSync(filePath, 'utf-8');
             const info: BridgeInfo = JSON.parse(raw);
             if (typeof info.pid === 'number' && isProcessAlive(info.pid)) {
-                // Strip authToken for security — callers must read their own bridge file
+                // Strip authToken for security - callers must read their own bridge file
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 const { authToken: _token, ...safe } = info;
                 results.push(safe);
@@ -438,7 +438,7 @@ export class AgentBridge {
                     current.lastHeartbeatAt = new Date().toISOString();
                     writeBridgeInfoFile(this.bridgeFilePath, current);
                 } catch {
-                    // best effort — file may be gone during shutdown
+                    // best effort - file may be gone during shutdown
                 }
             }, HEARTBEAT_INTERVAL_MS);
         } catch (err) {
@@ -527,7 +527,7 @@ export class AgentBridge {
         let buffer = '';
 
         socket.on('data', (chunk: Buffer) => {
-            // First data received — cancel the idle-connection timeout.
+            // First data received - cancel the idle-connection timeout.
             socket.setTimeout(0);
 
             buffer += chunk.toString('utf-8');

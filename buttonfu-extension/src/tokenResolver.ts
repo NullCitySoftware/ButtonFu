@@ -101,7 +101,7 @@ export function captureSystemTokens(aliasMap?: ReadonlyMap<string, string>): Tok
                     value = os.tmpdir();
                     break;
                 case '$Clipboard$':
-                    // Clipboard is async — callers must await captureClipboard() separately.
+                    // Clipboard is async - callers must await captureClipboard() separately.
                     value = '';
                     break;
                 case '$GitBranch$':
@@ -171,7 +171,7 @@ export function replaceTokens(text: string, systemSnap: TokenSnapshot, userValue
 export function getGitBranch(workspacePath?: string): string {
     if (!workspacePath) { return ''; }
 
-    // Prefer the VS Code git extension — it handles complex repo layouts better.
+    // Prefer the VS Code git extension - it handles complex repo layouts better.
     try {
         const gitExtension = vscode.extensions.getExtension<{ getAPI(version: number): any }>('vscode.git');
         if (gitExtension?.isActive) {
@@ -186,7 +186,7 @@ export function getGitBranch(workspacePath?: string): string {
         }
     } catch { /* fall through to filesystem fallback */ }
 
-    // Filesystem fallback — skip in untrusted workspaces.
+    // Filesystem fallback - skip in untrusted workspaces.
     if (!vscode.workspace.isTrusted) {
         return '';
     }

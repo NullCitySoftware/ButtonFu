@@ -141,7 +141,7 @@ function darkenHex(hex: string, amount: number): string {
     return `#${nextRed.toString(16).padStart(2, '0')}${nextGreen.toString(16).padStart(2, '0')}${nextBlue.toString(16).padStart(2, '0')}${alphaSuffix}`;
 }
 
-/** Sidebar webview provider — renders ButtonFu buttons and notes as clickable buttons in grouped flow panels. */
+/** Sidebar webview provider - renders ButtonFu buttons and notes as clickable buttons in grouped flow panels. */
 export class ButtonPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'buttonfu.buttonsView';
 
