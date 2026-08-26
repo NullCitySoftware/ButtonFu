@@ -2,7 +2,7 @@
   "name": "buttonfu",
   "displayName": "ButtonFu",
   "description": "Customizable buttons for VS Code - execute terminal commands, palette actions, tasks, and Copilot prompts with a single click",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "publisher": "nullcity",
   "icon": "resources/icon.png",
   "repository": {
@@ -33,6 +33,9 @@
   },
   "pricing": "Free",
   "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -216,6 +219,16 @@
         "command": "buttonfu.agentBridgeShowContext",
         "title": "ButtonFu: Agent Bridge Context",
         "icon": "$(info)"
+      },
+      {
+        "command": "buttonfu.claude.showAgents",
+        "title": "Show Claude Background Agents",
+        "category": "ButtonFu"
+      },
+      {
+        "command": "buttonfu.api.runButton",
+        "title": "API: Run Button",
+        "category": "ButtonFu"
       }
     ],
     "menus": {
@@ -310,6 +323,48 @@
           "default": false,
           "description": "Start a local named-pipe JSON-RPC bridge so external agents can call ButtonFu API commands. Disabled by default.",
           "scope": "application"
+        },
+        "buttonfu.claude.defaultPermissionMode": {
+          "type": "string",
+          "enum": [
+            "bypassPermissions",
+            "acceptEdits",
+            "auto",
+            "plan",
+            "manual",
+            "dontAsk"
+          ],
+          "default": "bypassPermissions",
+          "scope": "machine",
+          "description": "Permission mode a newly created Claude button starts with. Existing buttons keep whatever they were saved with."
+        },
+        "buttonfu.claude.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Full path to the Claude Code CLI. Leave empty to use claude from PATH, falling back to the binary bundled with the Claude Code extension."
+        },
+        "buttonfu.claude.externalTerminalCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "Command that opens an external terminal, as an array of arguments (not a command line). Use `${script}` for the generated launcher script and `${cwd}` for the working directory. Leave empty to use Windows Terminal, macOS Terminal, or x-terminal-emulator."
+        },
+        "buttonfu.claude.handoffTimeoutSeconds": {
+          "type": "number",
+          "default": 300,
+          "minimum": 30,
+          "scope": "machine",
+          "description": "How long a queued Claude launch waits for its new window to open before it is discarded."
+        },
+        "buttonfu.claude.allowBridgeRun": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "description": "Allow the ButtonFu agent bridge to run Claude buttons. Only buttons of type Claude Command can ever be run this way; every other type is refused."
         }
       }
     }
@@ -323,7 +378,7 @@
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
     "package-extension": "npm run check-types && npm run check-webview-js && node esbuild.js --production",
     "check-types": "tsc --noEmit",
-    "check-webview-js": "node --check resources/editor.js",
+    "check-webview-js": "node scripts/check-webview-script.js",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "build-tests": "node -e \"require('fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc -p tsconfig.test.json",

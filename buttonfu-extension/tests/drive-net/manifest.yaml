@@ -19,4 +19,5 @@ suites:
   - activation.yaml
   - note-crud.yaml
   - button-crud.yaml
+  - claude-button.yaml
   - cleanup.yaml

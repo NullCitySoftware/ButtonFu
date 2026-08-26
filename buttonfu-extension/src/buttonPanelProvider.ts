@@ -147,6 +147,16 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
 
     private _view?: vscode.WebviewView;
     private _lastShellState?: string;
+    /**
+     * True when the live DOM has been updated by a message but `webview.html` has not.
+     *
+     * Hiding a webview view tears its context down, and VS Code brings it back from the last
+     * string assigned to `webview.html` rather than by resolving the provider again. Anything
+     * delivered by `postMessage` since that assignment is lost, which is how a hidden and
+     * re-shown panel came back showing buttons that had been deleted and a column count that had
+     * been changed. The flag records that debt so it can be paid off the moment the view returns.
+     */
+    private _htmlIsStale = false;
     private readonly disposables: vscode.Disposable[] = [];
     private readonly viewDisposables: vscode.Disposable[] = [];
 
@@ -199,6 +209,13 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlContent(webviewView.webview);
         this._lastShellState = this._getShellState();
+        this._htmlIsStale = false;
+
+        this.viewDisposables.push(webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible && this._htmlIsStale) {
+                this.rewriteHtml();
+            }
+        }));
 
         this.viewDisposables.push(webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
@@ -252,8 +269,14 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
 
         const nextShellState = this._getShellState();
         if (this._lastShellState !== nextShellState) {
-            this._view.webview.html = this._getHtmlContent(this._view.webview);
-            this._lastShellState = nextShellState;
+            this.rewriteHtml();
+            return;
+        }
+
+        // A hidden view has no live DOM to message, so the only way the change survives is to
+        // write it into the html the view will be restored from.
+        if (!this._view.visible) {
+            this.rewriteHtml();
             return;
         }
 
@@ -261,6 +284,18 @@ export class ButtonPanelProvider implements vscode.WebviewViewProvider {
             type: 'refreshContent',
             html: this._renderContent()
         });
+        this._htmlIsStale = true;
+    }
+
+    /** Rebuilds the whole document, which is what a restored view is brought back from. */
+    private rewriteHtml(): void {
+        if (!this._view) {
+            return;
+        }
+
+        this._view.webview.html = this._getHtmlContent(this._view.webview);
+        this._lastShellState = this._getShellState();
+        this._htmlIsStale = false;
     }
 
     private _getShellState(): string {

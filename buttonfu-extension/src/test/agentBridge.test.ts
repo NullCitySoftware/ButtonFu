@@ -828,7 +828,7 @@ test('describe returns API schema with methods, types, and error codes', async (
         assert.equal(schema.protocol, 'JSON-RPC 2.0 over newline-delimited named pipe');
         assert.equal(schema.transport, 'OS named pipe (Windows: \\\\.\\pipe\\buttonfu-vscode-{pid}, Unix: ~/.buttonfu/buttonfu-vscode-{pid}.sock)');
 
-        // 10 CRUD + 2 introspection methods
+        // 10 CRUD + 2 introspection + the one method that runs anything
         const methodNames = schema.methods.map((m: { method: string }) => m.method);
         assert.ok(methodNames.includes('buttonfu.api.createButton'));
         assert.ok(methodNames.includes('buttonfu.api.listButtons'));
@@ -836,7 +836,8 @@ test('describe returns API schema with methods, types, and error codes', async (
         assert.ok(methodNames.includes('buttonfu.api.deleteNote'));
         assert.ok(methodNames.includes('buttonfu.api.getBridgeContext'));
         assert.ok(methodNames.includes('buttonfu.api.listBridges'));
-        assert.equal(methodNames.length, 12);
+        assert.ok(methodNames.includes('buttonfu.api.runButton'));
+        assert.equal(methodNames.length, 13);
 
         // Type definitions present
         assert.ok(schema.types.ButtonConfig);
@@ -1251,6 +1252,34 @@ test('describe response includes automationGuidance fields', async () => {
         } finally {
             conn.destroy();
         }
+    } finally {
+        await bridge.stop();
+    }
+});
+
+test('runButton is on the allowlist, and reaches the command handler', async () => {
+    const exec = createFakeExecuteCommand();
+    const bridge = new AgentBridge(exec, createTestLogger());
+    await bridge.start();
+
+    try {
+        const info = readBridgeInfo();
+        const client = await connectToBridge(info.pipeName);
+        client.send({
+            jsonrpc: '2.0',
+            id: 42,
+            method: 'buttonfu.api.runButton',
+            params: { id: 'claude-1' },
+            auth: info.authToken
+        });
+
+        const raw = await client.readLine();
+        const response = JSON.parse(raw);
+        assert.equal(response.error, undefined, 'runButton must not be rejected as an unknown method.');
+        assert.equal(exec.calls.length, 1);
+        assert.equal(exec.calls[0].command, 'buttonfu.api.runButton');
+
+        client.destroy();
     } finally {
         await bridge.stop();
     }

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ButtonConfig, TerminalTab, SYSTEM_TOKENS } from './types';
 import { detectShellKind, shellEscape, ShellKind } from './utils';
 import { PromptActionService } from './promptActionService';
+import { ClaudeSessionService } from './claudeSessionService';
 import {
     captureSystemTokens as captureSystemTokensCore,
     findTokensInText as findTokensInTextCore,
@@ -20,6 +21,13 @@ const DRIVE_NET_SMOKE_TASK_NAME = 'Drive.NET: manifest smoke - buttonfu-extensio
  */
 export class ButtonExecutor {
     private readonly promptActions = new PromptActionService();
+
+    /**
+     * @param claudeSessions Starts Claude sessions for `ClaudeCommand` buttons. `extension.ts`
+     *   passes one built with the extension's global storage; without it, every destination but
+     *   the new-window one still works.
+     */
+    constructor(private readonly claudeSessions: ClaudeSessionService = new ClaudeSessionService()) {}
 
     /** Capture all system token values right now (at button click time). */
     captureSystemTokens(button: ButtonConfig): TokenSnapshot {
@@ -189,7 +197,17 @@ export class ButtonExecutor {
         const replaced = {
             ...button,
             executionText: replaceFn(button.executionText || ''),
-            terminals: replacedTerminals
+            terminals: replacedTerminals,
+            // A ClaudeCommand button deliberately uses the plain replacement, not the
+            // shell-escaping one: the prompt never reaches a command line, and escaping it here
+            // would leave backslashes and carets visible in what Claude actually reads.
+            ...(button.type === 'ClaudeCommand' ? {
+                claudeCwd: replaceFn(button.claudeCwd || ''),
+                claudeTargetFolder: replaceFn(button.claudeTargetFolder || ''),
+                claudeAddDirs: (button.claudeAddDirs || []).map(replaceFn),
+                claudeSessionName: replaceFn(button.claudeSessionName || ''),
+                claudeExtraArgs: (button.claudeExtraArgs || []).map(replaceFn)
+            } : {})
         };
         await this.executeInternal(replaced);
     }
@@ -212,6 +230,9 @@ export class ButtonExecutor {
                 break;
             case 'CopilotCommand':
                 await this.executeCopilotCommand(button);
+                break;
+            case 'ClaudeCommand':
+                await this.claudeSessions.launch(button);
                 break;
             default:
                 console.error(`ButtonFu: unexpected button type "${button.type}" — this may indicate an unmigrated legacy button`);

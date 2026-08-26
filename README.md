@@ -34,6 +34,7 @@ Installer builds also read their version and repository URL from `buttonfu-exten
 | **Command Palette Action** | Executes any VS Code command by ID, with optional JSON arguments |
 | **Task Execution** | Runs a task discovered from your workspace or extensions |
 | **Copilot Command** | Sends a prompt to GitHub Copilot Chat, with model, mode, and file attachments |
+| **Claude Command** | Starts a Claude Code session with the prompt already running, in a terminal, a new window, or the Claude panel |
 
 ---
 
@@ -140,6 +141,53 @@ Copilot Command buttons let you build reusable AI workflows. Choose your **model
 Tokens work in Copilot prompts too, letting you build dynamic prompts built around the active file, selected text, or any user-provided input.
 
 When you click the button, ButtonFu opens a fresh chat session, sets the mode and model, attaches any files, and submits your prompt — all in one click.
+
+---
+
+## Claude integration
+
+Claude Command buttons start a Claude Code session with your prompt already sent, so one click gets you a working session rather than an empty prompt box. Pick where it runs, and the rest of the button works exactly like the others: tokens are resolved, categories group it, and `warnBeforeExecution` still asks first if you turn it on.
+
+### Where it can run
+
+| Destination | What happens |
+|------|--------------|
+| **Terminal in this window** | Opens a terminal here and runs the prompt in it |
+| **Terminal in its own window** | Opens a terminal and tears it off into a separate window, running the prompt |
+| **External terminal** | Runs the prompt in a terminal outside VS Code, which survives reloading the window |
+| **New VS Code window** | Opens another folder in a new VS Code window and runs the prompt there, with no second click |
+| **Background agent** | Starts the session in the background and returns straight away. Find it again with **ButtonFu: Show Claude Background Agents** |
+| **Headless, then open the panel** | Runs the prompt with no interface, then opens the finished conversation in the Claude panel |
+| **Claude panel** | Opens the Claude panel with the prompt typed into the box, ready for you to send. Where a new button starts |
+
+**A new Claude button starts on the Claude panel**, which types your prompt into the box and waits for you to press Enter. That is deliberate: the first click on a button you have just written shows you the prompt rather than setting an unattended session off against your files. When you are happy with it, switch the destination to one of the other six and the button runs it on one click.
+
+The panel is also the one destination that cannot take a model, an effort level or a permission mode: those are chosen inside the panel itself, so the editor hides them when it is selected. There is no way for one extension to submit a prompt inside another extension's panel, or to set its model from outside, which is why **Headless, then open the panel** exists: it runs the prompt through the CLI with everything you set, then opens the finished conversation in the panel for you to carry on in.
+
+A terminal ButtonFu opens is a real VS Code session: `/ide` reports connected, diffs open in the editor, and Claude can see your selection. The same is true of an external terminal. A background agent is deliberately not connected, because it is meant to outlive the window that started it.
+
+### Permissions
+
+A new Claude button runs **unattended** by default: it never stops to ask before editing a file or running a command. That is what makes a one-click button useful, and it is also worth knowing before you point one at something important. Change the mode per button in the editor, or change what new buttons start with using `buttonfu.claude.defaultPermissionMode`.
+
+### Extra arguments
+
+The **Extra Arguments** box is one argument per line, and a value goes on its own line. Nothing there is split on spaces or read by a shell, so this is two lines:
+
+```
+--append-system-prompt
+Answer in British English.
+```
+
+### Settings
+
+| Setting | What it does |
+|------|--------------|
+| `buttonfu.claude.executablePath` | Full path to the Claude CLI. Empty uses `claude` from `PATH`, falling back to the binary bundled with the Claude Code extension |
+| `buttonfu.claude.defaultPermissionMode` | What a newly created Claude button starts with. Existing buttons keep whatever they were saved with |
+| `buttonfu.claude.externalTerminalCommand` | The command that opens an external terminal, as an array of arguments. Empty uses Windows Terminal, macOS Terminal, or `x-terminal-emulator` |
+| `buttonfu.claude.handoffTimeoutSeconds` | How long a queued new-window launch waits for its window before it is discarded |
+| `buttonfu.claude.allowBridgeRun` | Lets the Agent Bridge run Claude buttons. Off by default, and only ever Claude buttons |
 
 ---
 

@@ -7,7 +7,7 @@ test('buildApiSchema returns well-formed schema with correct version', () => {
     assert.equal(schema.version, '2.0.0');
     assert.equal(schema.schemaVersion, 2);
     assert.equal(schema.name, 'ButtonFu Agent Bridge');
-    assert.equal(schema.methods.length, 12);
+    assert.equal(schema.methods.length, 13);
     assert.equal(schema.transport, 'OS named pipe (Windows: \\\\.\\pipe\\buttonfu-vscode-{pid}, Unix: ~/.buttonfu/buttonfu-vscode-{pid}.sock)');
 
     // Every method has required fields
@@ -101,4 +101,34 @@ test('automationGuidance warns against direct storage edits', () => {
 test('AUTOMATION_GUIDANCE matches schema.automationGuidance', () => {
     const schema = buildApiSchema('1.0.0');
     assert.deepStrictEqual(schema.automationGuidance, AUTOMATION_GUIDANCE);
+});
+
+test('buildApiSchema documents the ClaudeCommand type and its fields', () => {
+    const schema = buildApiSchema('0.0.0');
+    const btnFields = schema.types.ButtonConfig;
+
+    const typeField = btnFields.find(f => f.name === 'type');
+    assert.ok(typeField?.enum?.includes('ClaudeCommand'));
+
+    const names = btnFields.map(f => f.name);
+    for (const field of [
+        'claudeDestination', 'claudeModel', 'claudeEffort', 'claudePermissionMode',
+        'claudeCwd', 'claudeTargetFolder', 'claudeSessionName', 'claudeAddDirs',
+        'claudeWorktree', 'claudeWorktreeName', 'claudeExtraArgs', 'claudeNewWindow'
+    ]) {
+        assert.ok(names.includes(field), `ButtonConfig schema missing ${field}`);
+    }
+
+    const destination = btnFields.find(f => f.name === 'claudeDestination');
+    assert.equal(destination?.default, 'panelPrefill');
+    assert.equal(destination?.enum?.length, 7);
+});
+
+test('buildApiSchema carries a worked ClaudeCommand example on createButton', () => {
+    const schema = buildApiSchema('0.0.0');
+    const create = schema.methods.find(m => m.method === 'buttonfu.api.createButton');
+    const example = create?.additionalExamples?.[0]?.params as Record<string, unknown> | undefined;
+
+    assert.equal(example?.type, 'ClaudeCommand');
+    assert.equal(example?.claudeDestination, 'terminalNewWindow');
 });

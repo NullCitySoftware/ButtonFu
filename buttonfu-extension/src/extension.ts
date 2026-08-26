@@ -25,9 +25,20 @@ import {
     DEV_RESET_API_SMOKE_COMMAND,
     resetDevApiSmokeData
 } from './devApiSmoke';
+import { sweepStaleLaunchers } from './claudeCommandBuilder';
+import { ClaudeSessionService } from './claudeSessionService';
+import { claimPendingJob } from './claudeHandoff';
+import { logClaude } from './claudeOutput';
+import {
+    defaultAgentsCwd,
+    registerClaudeAgentsCommand,
+    runClaudeCli,
+    type ClaudeAgentSummary
+} from './claudeAgentsView';
 
 let store: ButtonStore;
 let executor: ButtonExecutor;
+let claudeSessions: ClaudeSessionService;
 let panelProvider: ButtonPanelProvider;
 let noteStore: NoteStore;
 let noteActionService: NoteActionService;
@@ -98,6 +109,28 @@ function registerButtonCommands(context: vscode.ExtensionContext): void {
     }
 }
 
+/**
+ * Runs whatever launch was queued for a window on this folder, if any.
+ *
+ * Fire and forget, and deliberately swallowing: a window that cannot start a queued session must
+ * still be a working window.
+ */
+async function runPendingClaudeJob(context: vscode.ExtensionContext): Promise<void> {
+    try {
+        const job = claimPendingJob(
+            context.globalStorageUri.fsPath,
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+        if (!job) {
+            return;
+        }
+
+        logClaude(`Picked up queued job ${job.id} for "${job.buttonName}".`);
+        await claudeSessions.launchSpec(job.spec, job.buttonName);
+    } catch (error) {
+        logClaude(`Could not run a queued job: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     console.log(`ButtonFu extension active | v${buildInfo.version} #${buildInfo.buildNumber} @ ${buildInfo.buildTimeIso}`);
 
@@ -109,7 +142,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Initialise core services
     store = new ButtonStore(context);
-    executor = new ButtonExecutor();
+    claudeSessions = new ClaudeSessionService(context.globalStorageUri.fsPath);
+    executor = new ButtonExecutor(claudeSessions);
     noteStore = new NoteStore(context);
     context.subscriptions.push(store, noteStore);
 
@@ -134,6 +168,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.workspace.registerTextDocumentContentProvider(NotePreviewProvider.scheme, notePreviewProvider)
     );
+
+    // Claude wiring: clear out yesterday's launcher scripts, register the agents command, and
+    // pick up any launch queued for a window on this folder.
+    sweepStaleLaunchers();
+    registerClaudeAgentsCommand(context, () => ({
+        resolveExecutable: () => claudeSessions.resolveExecutablePath(),
+        cwd: () => defaultAgentsCwd(),
+        run: (exe, args, cwd) => runClaudeCli(exe, args, cwd),
+        resumeInTerminal: (agent: ClaudeAgentSummary) => claudeSessions.resumeInTerminal(agent.sessionId, agent.cwd)
+    }));
+    void runPendingClaudeJob(context);
 
     // Refresh sidebar when workspace folders change (updates the workspace name label)
     context.subscriptions.push(
@@ -362,12 +407,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         vscode.commands.registerCommand('buttonfu.api.createButton', async (input: unknown) => {
-            const result = await buttonApi.createButton(store, input);
+            const defaultPermissionMode = vscode.workspace.getConfiguration('buttonfu')
+                .get<string>('claude.defaultPermissionMode');
+            const result = await buttonApi.createButton(store, input, defaultPermissionMode);
             panelProvider.refresh();
             if (!Array.isArray(result) && result.success && (input as Record<string, unknown>)?.openEditor) {
                 ButtonEditorPanel.createOrShowWithButton(store, context.extensionUri, result.data!.id, noteStore);
             }
             return result;
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('buttonfu.api.runButton', async (input: unknown) => {
+            return buttonApi.runButton(store, input, {
+                allowed: () => vscode.workspace.getConfiguration('buttonfu')
+                    .get<boolean>('claude.allowBridgeRun') === true,
+                executor: () => executor
+            });
         })
     );
 

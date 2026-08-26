@@ -405,3 +405,114 @@ test('updateButton and deleteButton reject read-only workspace buttons', async (
     assert.equal(store.getWorkspaceButtons().length, 1);
     assert.equal(store.getWorkspaceButtons()[0].name, 'Repo Button');
 });
+
+// ---------------------------------------------------------------------------
+// ClaudeCommand fields
+// ---------------------------------------------------------------------------
+
+test('createButton accepts a ClaudeCommand button with every claude field', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, {
+        name: 'Plan this repo',
+        locality: 'Global',
+        type: 'ClaudeCommand',
+        executionText: 'Read AGENTS.md and summarise what this repo does.',
+        claudeDestination: 'terminalNewWindow',
+        claudeModel: 'opus',
+        claudeEffort: 'high',
+        claudePermissionMode: 'acceptEdits',
+        claudeCwd: 'C:\GIT\ButtonFu',
+        claudeTargetFolder: 'C:\GIT\Kitae',
+        claudeSessionName: 'repo plan',
+        claudeAddDirs: ['C:\GIT\Catanari'],
+        claudeWorktree: true,
+        claudeWorktreeName: 'planning',
+        claudeExtraArgs: ['--append-system-prompt', 'be terse'],
+        claudeNewWindow: true
+    }) as ApiResult<ButtonConfig>;
+
+    assert.equal(result.success, true);
+    const stored = store.getButton(result.data!.id) as ButtonConfig;
+    assert.equal(stored.type, 'ClaudeCommand');
+    assert.equal(stored.claudeDestination, 'terminalNewWindow');
+    assert.equal(stored.claudeModel, 'opus');
+    assert.equal(stored.claudeEffort, 'high');
+    assert.equal(stored.claudePermissionMode, 'acceptEdits');
+    assert.equal(stored.claudeCwd, 'C:\GIT\ButtonFu');
+    assert.equal(stored.claudeTargetFolder, 'C:\GIT\Kitae');
+    assert.equal(stored.claudeSessionName, 'repo plan');
+    assert.deepEqual(stored.claudeAddDirs, ['C:\GIT\Catanari']);
+    assert.equal(stored.claudeWorktree, true);
+    assert.equal(stored.claudeWorktreeName, 'planning');
+    assert.deepEqual(stored.claudeExtraArgs, ['--append-system-prompt', 'be terse']);
+    assert.equal(stored.claudeNewWindow, true);
+});
+
+test('createButton defaults a Claude button to the panel, unattended, with empty lists', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, { name: 'Bare Claude', locality: 'Global', type: 'ClaudeCommand' }) as ApiResult<ButtonConfig>;
+
+    assert.equal(result.success, true);
+    assert.equal(result.data?.claudeDestination, 'panelPrefill',
+        'A new button types its prompt and waits, so a first click never sets an agent off unread.');
+    assert.equal(result.data?.claudePermissionMode, 'bypassPermissions');
+    assert.deepEqual(result.data?.claudeAddDirs, []);
+    assert.deepEqual(result.data?.claudeExtraArgs, []);
+});
+
+test('createButton honours the default permission mode passed in', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, { name: 'Careful Claude', locality: 'Global', type: 'ClaudeCommand' }, 'plan') as ApiResult<ButtonConfig>;
+
+    assert.equal(result.data?.claudePermissionMode, 'plan');
+});
+
+test('createButton rejects an unknown claudeDestination', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, {
+        name: 'Bad destination', locality: 'Global', type: 'ClaudeCommand', claudeDestination: 'teleport'
+    }) as ApiResult<ButtonConfig>;
+
+    assert.equal(result.success, false);
+    assert.ok(result.errors?.some(e => e.includes('claudeDestination must be one of')));
+});
+
+test('createButton rejects an unknown claudePermissionMode', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, {
+        name: 'Bad mode', locality: 'Global', type: 'ClaudeCommand', claudePermissionMode: 'yolo'
+    }) as ApiResult<ButtonConfig>;
+
+    assert.equal(result.success, false);
+    assert.ok(result.errors?.some(e => e.includes('claudePermissionMode must be one of')));
+});
+
+test('createButton rejects claudeExtraArgs that is not an array of strings', async () => {
+    const { store, api } = createFixtures();
+
+    const result = await api.createButton(store, {
+        name: 'Bad args', locality: 'Global', type: 'ClaudeCommand', claudeExtraArgs: ['--model', 7]
+    }) as ApiResult<ButtonConfig>;
+
+    assert.equal(result.success, false);
+    assert.ok(result.errors?.some(e => e.includes('claudeExtraArgs must be an array of strings')));
+});
+
+test('updateButton can change a Claude destination and rejects a bad one', async () => {
+    const { store, api } = createFixtures();
+
+    const created = await api.createButton(store, { name: 'Switchable', locality: 'Global', type: 'ClaudeCommand' }) as ApiResult<ButtonConfig>;
+
+    const good = await api.updateButton(store, { id: created.data!.id, claudeDestination: 'backgroundAgent' });
+    assert.equal(good.success, true);
+    assert.equal(store.getButton(created.data!.id)?.claudeDestination, 'backgroundAgent');
+
+    const bad = await api.updateButton(store, { id: created.data!.id, claudeDestination: 'nowhere' });
+    assert.equal(bad.success, false);
+    assert.equal(store.getButton(created.data!.id)?.claudeDestination, 'backgroundAgent');
+});

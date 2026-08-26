@@ -6,10 +6,21 @@
  * and surfaced to the caller so the command handler can open the editor panel.
  */
 
-import { ApiResult, ButtonConfig, ButtonLocality, createDefaultButton } from './types';
+import {
+    ApiResult,
+    BUTTON_TYPE_INFO,
+    BUTTON_TYPES,
+    ButtonConfig,
+    ButtonLocality,
+    CLAUDE_DESTINATION_INFO,
+    CLAUDE_PERMISSION_MODES,
+    createDefaultButton
+} from './types';
 import { ButtonStore } from './buttonStore';
+import type { ButtonExecutor, TokenSnapshot } from './buttonExecutor';
 
-const VALID_TYPES: readonly string[] = ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'];
+const VALID_TYPES: readonly string[] = BUTTON_TYPES;
+const VALID_CLAUDE_DESTINATIONS: readonly string[] = Object.keys(CLAUDE_DESTINATION_INFO);
 const VALID_LOCALITIES: readonly string[] = ['Global', 'Local'];
 const MUTABLE_BUTTON_FIELDS: ReadonlyArray<keyof ButtonConfig> = [
     'name',
@@ -25,6 +36,18 @@ const MUTABLE_BUTTON_FIELDS: ReadonlyArray<keyof ButtonConfig> = [
     'copilotMode',
     'copilotAttachFiles',
     'copilotAttachActiveFile',
+    'claudeDestination',
+    'claudeModel',
+    'claudeEffort',
+    'claudePermissionMode',
+    'claudeCwd',
+    'claudeTargetFolder',
+    'claudeSessionName',
+    'claudeAddDirs',
+    'claudeWorktree',
+    'claudeWorktreeName',
+    'claudeExtraArgs',
+    'claudeNewWindow',
     'sortOrder',
     'warnBeforeExecution',
     'userTokens'
@@ -55,6 +78,43 @@ function checkString(obj: Record<string, unknown>, field: string, maxLen: number
     return undefined;
 }
 
+function checkStringArray(obj: Record<string, unknown>, field: string): string | undefined {
+    const val = obj[field];
+    if (val === undefined || val === null) {
+        return undefined;
+    }
+    if (!Array.isArray(val) || val.some(entry => typeof entry !== 'string')) {
+        return `${field} must be an array of strings.`;
+    }
+    return undefined;
+}
+
+/** Validates the ClaudeCommand fields shared by create and update. */
+function checkClaudeFields(obj: Record<string, unknown>): string[] {
+    const errors: string[] = [];
+
+    if (obj.claudeDestination !== undefined && !VALID_CLAUDE_DESTINATIONS.includes(obj.claudeDestination as string)) {
+        errors.push(`claudeDestination must be one of: ${VALID_CLAUDE_DESTINATIONS.join(', ')}.`);
+    }
+
+    if (obj.claudePermissionMode !== undefined && obj.claudePermissionMode !== ''
+        && !CLAUDE_PERMISSION_MODES.includes(obj.claudePermissionMode as string)) {
+        errors.push(`claudePermissionMode must be one of: ${CLAUDE_PERMISSION_MODES.join(', ')}.`);
+    }
+
+    for (const field of ['claudeAddDirs', 'claudeExtraArgs']) {
+        const err = checkStringArray(obj, field);
+        if (err) { errors.push(err); }
+    }
+
+    for (const field of ['claudeModel', 'claudeEffort', 'claudeCwd', 'claudeTargetFolder', 'claudeSessionName', 'claudeWorktreeName']) {
+        const err = checkString(obj, field, MAX_CATEGORY, false);
+        if (err) { errors.push(err); }
+    }
+
+    return errors;
+}
+
 function validateCreateInput(input: unknown): string[] {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
         return ['Input must be a non-null object.'];
@@ -77,6 +137,8 @@ function validateCreateInput(input: unknown): string[] {
         const err = checkString(obj, field, max, false);
         if (err) { errors.push(err); }
     }
+
+    errors.push(...checkClaudeFields(obj));
 
     return errors;
 }
@@ -109,6 +171,8 @@ function validateUpdateInput(input: unknown): string[] {
         if (err) { errors.push(err); }
     }
 
+    errors.push(...checkClaudeFields(obj));
+
     return errors;
 }
 
@@ -129,8 +193,8 @@ function pickMutableButtonFields(input: Record<string, unknown>): Partial<Button
 }
 
 /** Strip non-ButtonConfig keys (e.g. openEditor) and merge with defaults. */
-function mergeCreateInput(input: Record<string, unknown>): ButtonConfig {
-    const defaults = createDefaultButton(input.locality as ButtonLocality);
+function mergeCreateInput(input: Record<string, unknown>, defaultPermissionMode?: string): ButtonConfig {
+    const defaults = createDefaultButton(input.locality as ButtonLocality, defaultPermissionMode);
     const merged = pickMutableButtonFields(input);
     return { ...defaults, ...merged, id: defaults.id };
 }
@@ -141,7 +205,8 @@ function mergeCreateInput(input: Record<string, unknown>): ButtonConfig {
 
 export async function createButton(
     store: ButtonStore,
-    input: unknown
+    input: unknown,
+    defaultPermissionMode?: string
 ): Promise<ApiResult<ButtonConfig> | ApiResult<ButtonConfig>[]> {
     const isBatch = Array.isArray(input);
     const items: unknown[] = isBatch ? input : [input];
@@ -153,7 +218,7 @@ export async function createButton(
             results.push({ success: false, errors });
             continue;
         }
-        const button = mergeCreateInput(item as Record<string, unknown>);
+        const button = mergeCreateInput(item as Record<string, unknown>, defaultPermissionMode);
         await store.saveButton(button, 'Agent');
         results.push({ success: true, data: store.getButton(button.id) ?? button });
     }
@@ -256,4 +321,129 @@ export async function deleteButton(
     }
 
     return isBatch ? results : results[0];
+}
+
+// ---------------------------------------------------------------------------
+// Running a button
+// ---------------------------------------------------------------------------
+
+/** What a bridge-run needs from the extension host. */
+export interface RunButtonHost {
+    /** True when `buttonfu.claude.allowBridgeRun` is on. */
+    allowed(): boolean;
+    /** The executor a click would use, so tokens resolve exactly the same way. */
+    executor(): ButtonExecutor;
+}
+
+/** The result of a successful run. */
+export interface RunButtonResult {
+    id: string;
+    launched: true;
+    /** Names anything a click would have done that a bridge call cannot. */
+    notes?: string[];
+}
+
+/** Finds a button by id, or by name within an optional locality. */
+function resolveButtonTarget(store: ButtonStore, obj: Record<string, unknown>): ButtonConfig | undefined {
+    if (typeof obj.id === 'string' && obj.id.trim()) {
+        return store.getButton(obj.id.trim());
+    }
+
+    if (typeof obj.name === 'string' && obj.name.trim()) {
+        const name = obj.name.trim().toLowerCase();
+        const locality = typeof obj.locality === 'string' ? obj.locality : undefined;
+        return store.getAllButtons().find(button =>
+            button.name.toLowerCase() === name && (!locality || button.locality === locality));
+    }
+
+    return undefined;
+}
+
+/**
+ * Runs a button on behalf of an agent.
+ *
+ * Only Claude buttons can ever be run this way, and only when the setting says so. A terminal
+ * button that deploys a site or drops a database is refused by type before anything else is
+ * considered. Each refusal has its own message, so an agent that hits one knows whether to change
+ * the request or give up rather than retrying blindly.
+ */
+export async function runButton(
+    store: ButtonStore,
+    input: unknown,
+    host: RunButtonHost
+): Promise<ApiResult<RunButtonResult>> {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+        return { success: false, errors: ['Input must be a non-null object.'] };
+    }
+    const obj = input as Record<string, unknown>;
+
+    if (!host.allowed()) {
+        return {
+            success: false,
+            errors: ['Running buttons over the agent bridge is disabled. '
+                + 'Set buttonfu.claude.allowBridgeRun to true to allow it.']
+        };
+    }
+
+    const button = resolveButtonTarget(store, obj);
+    if (!button) {
+        const target = typeof obj.id === 'string' ? obj.id : (typeof obj.name === 'string' ? obj.name : '');
+        return {
+            success: false,
+            errors: [target ? `Button not found: ${target}` : 'id or name is required and must be a non-empty string.']
+        };
+    }
+
+    if (button.type !== 'ClaudeCommand') {
+        const label = BUTTON_TYPE_INFO[button.type]?.label ?? button.type;
+        return {
+            success: false,
+            errors: [`Only Claude buttons can be run over the bridge. This button is a ${label}.`]
+        };
+    }
+
+    const executor = host.executor();
+    const systemSnap = executor.captureSystemTokens(button);
+    await executor.captureClipboard(button, systemSnap);
+
+    const supplied = readSuppliedTokens(obj.tokens);
+    const unresolved = executor.getUnresolvedUserTokens(button, systemSnap)
+        .filter(token => !(token.token.toLowerCase() in supplied));
+
+    if (unresolved.length > 0) {
+        // A click can open the input panel and wait for a person. A bridge call has nobody to ask.
+        return {
+            success: false,
+            errors: [`This button needs values for ${unresolved.map(t => t.token).join(', ')} `
+                + 'and cannot be run over the bridge. Pass them as { tokens: { Name: "value" } }.']
+        };
+    }
+
+    const notes: string[] = [];
+    if (button.warnBeforeExecution) {
+        // The confirmation is a dialog on a click, and there is nobody here to answer it.
+        notes.push('Warn Before Execution was skipped: a bridge call has nobody to confirm with.');
+    }
+
+    await executor.executeWithTokens(button, systemSnap, supplied);
+
+    return { success: true, data: { id: button.id, launched: true, ...(notes.length > 0 ? { notes } : {}) } };
+}
+
+/** Normalises a caller-supplied token map into the snapshot shape the executor expects. */
+function readSuppliedTokens(value: unknown): TokenSnapshot {
+    const snapshot: TokenSnapshot = {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return snapshot;
+    }
+
+    for (const [name, tokenValue] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof tokenValue !== 'string') {
+            continue;
+        }
+        const key = name.startsWith('$') && name.endsWith('$') ? name : `$${name}$`;
+        snapshot[key.toLowerCase()] = tokenValue;
+    }
+
+    return snapshot;
 }

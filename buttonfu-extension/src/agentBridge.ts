@@ -44,7 +44,10 @@ const ALLOWED_METHODS: ReadonlySet<string> = new Set([
     'buttonfu.api.getNote',
     'buttonfu.api.listNotes',
     'buttonfu.api.updateNote',
-    'buttonfu.api.deleteNote'
+    'buttonfu.api.deleteNote',
+    // Running is not CRUD. It is Claude-only and off unless buttonfu.claude.allowBridgeRun says
+    // otherwise; the method itself refuses everything else.
+    'buttonfu.api.runButton'
 ]);
 
 const MAX_MESSAGE_BYTES = 1_048_576;        // 1 MB
@@ -705,7 +708,8 @@ export class AgentBridge {
         'buttonfu.api.deleteButton',
         'buttonfu.api.createNote',
         'buttonfu.api.updateNote',
-        'buttonfu.api.deleteNote'
+        'buttonfu.api.deleteNote',
+        'buttonfu.api.runButton'
     ]);
 
     /** Attach bridgeContext to mutation results so callers know which window was modified. */

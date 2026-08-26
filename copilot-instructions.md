@@ -48,7 +48,7 @@ Each button has these properties:
 - **name** — display name
 - **locality** — `Global` (user settings) or `Local` (workspace state)
 - **description** — tooltip text
-- **type** — one of: `TerminalCommand`, `PowerShellCommand`, `PaletteAction`, `TaskExecution`, `CopilotCommand`
+- **type** - one of: `TerminalCommand`, `PaletteAction`, `TaskExecution`, `CopilotCommand`, `ClaudeCommand`. `BUTTON_TYPES` in `types.ts` is the single source of truth; do not write a fourth copy of the list
 - **executionText** — the command/script/prompt to execute
 - **category** — grouping label for the sidebar tree
 - **icon** — codicon name (e.g. `play`, `terminal`, `rocket`)
@@ -56,6 +56,11 @@ Each button has these properties:
 - **copilotModel** — for CopilotCommand: model ID (e.g. `claude-opus-4.6`)
 - **copilotMode** — for CopilotCommand: `agent`, `ask`, `edit`, or `plan`
 - **copilotAttachFiles** — for CopilotCommand: array of file paths to attach
+- **claudeDestination** - for ClaudeCommand: `terminalHere`, `terminalNewWindow`, `externalTerminal`, `newVsCodeWindow`, `backgroundAgent`, `headlessThenPanel` or `panelPrefill`
+- **claudeModel**, **claudeEffort**, **claudePermissionMode** - for ClaudeCommand: passed to the CLI. `bypassPermissions` is the default for a new button
+- **claudeCwd**, **claudeTargetFolder**, **claudeAddDirs** - for ClaudeCommand: directories, all token-resolved. `claudeTargetFolder` is required for `newVsCodeWindow` only
+- **claudeSessionName**, **claudeWorktree**, **claudeWorktreeName**, **claudeNewWindow** - for ClaudeCommand: session naming, git worktree, and whether a panel destination opens in its own window
+- **claudeExtraArgs** - for ClaudeCommand: extra CLI arguments as argv entries. Nothing splits them on spaces, so a flag and its value are two entries
 
 ### Storage
 
@@ -72,6 +77,12 @@ Each button has these properties:
 | `buttonExecutor.ts` | Executes buttons by type — terminal, PowerShell, commands, tasks, Copilot |
 | `buttonTreeProvider.ts` | TreeDataProvider for the sidebar, groups buttons by category |
 | `editorPanel.ts` | Webview panel for the button editor with icon picker, autocomplete, colour picker |
+| `claudeCommandBuilder.ts` | Pure argv building and the launcher scripts. No `vscode` import, and it must stay that way |
+| `claudeExecutable.ts` | Finds the Claude CLI, and finds this window's IDE lock file |
+| `claudeSessionService.ts` | Every Claude launch: request assembly, and one method per destination |
+| `claudePanelBridge.ts` | The only file that knows the Claude Code extension's command names and deep link |
+| `claudeHandoff.ts` | The job file that gets a session running in a brand new VS Code window |
+| `claudeAgentsView.ts` | The background-agents quick pick |
 
 ### Copilot Integration
 
@@ -84,6 +95,18 @@ The `CopilotCommand` button type follows proven patterns for Copilot Chat integr
 6. Paste the prompt text and submit via `workbench.action.chat.submit`
 
 Multiple fallback command variants are tried for each step to ensure compatibility across VS Code versions.
+
+### Claude Integration
+
+Three facts about Claude Code that are expensive to rediscover:
+
+1. **A prompt seeded into the Claude panel is typed, never sent.** `claude-vscode.editor.open`, `claude-vscode.primaryEditor.open` and the `vscode://anthropic.claude-code/open` deep link all reach the webview as its initial text, which it types into the box and stops. There is no auto-submit path and no way for another extension to press Enter inside a webview, so the `panelPrefill` destination says so in its own notification. Only the CLI runs a prompt: `claude "prompt"` sends the positional argument as the first turn.
+
+2. **A prompt never goes on a command line.** Every destination builds an argv array. Where a shell is unavoidable, because a VS Code terminal takes a string rather than an argument list, the argv is written into a generated launcher script and the terminal only ever receives an invocation of that script. Prompts are prose full of quotes, dollars, backticks and newlines, and PowerShell would eat them.
+
+3. **`code.exe` cannot run a command in the window it opens**, and neither can `vscode.openFolder`. That is why `newVsCodeWindow` writes a job file into global storage and the new window claims it at startup, with the claim being a rename because a rename is atomic and the loser of a race is told so.
+
+One more, easy to break by accident: **never pass `env` or `strictEnv` when creating a terminal for Claude.** The Claude extension publishes `CLAUDE_CODE_SSE_PORT` through its environment variable collection, which VS Code applies to every terminal in the window whoever created it, and that variable is what makes the session a real VS Code session. `strictEnv` drops it silently, leaving a session that works but cannot see the editor. The Claude extension's own terminal code does pass it, because it supplies the environment itself; that one line must not be copied.
 
 ## Build & Debug
 
@@ -109,6 +132,8 @@ ButtonFu exposes a **named-pipe JSON-RPC 2.0 bridge** that external agents can u
 > - Any mechanism that bypasses the ButtonFu API command handlers
 >
 > Direct writes bypass validation, provenance tracking, UI refresh, and may corrupt or silently lose data. The internal storage format is not a stable API and may change between versions without notice.
+>
+> **`buttonfu.api.runButton` is the one method that executes anything.** It is off unless `buttonfu.claude.allowBridgeRun` is `true`, and it runs `ClaudeCommand` buttons and nothing else: every other type is refused by type, whatever that setting says. Do not widen it, and do not add a way to run a terminal button over the bridge.
 
 ### Helper CLI
 
@@ -201,6 +226,7 @@ This returns all available methods, parameter schemas, type definitions, example
 | `buttonfu.api.listNotes` | List all notes (optional locality filter) |
 | `buttonfu.api.updateNote` | Update a note's fields |
 | `buttonfu.api.deleteNote` | Delete one or more notes |
+| `buttonfu.api.runButton` | Run a Claude button. Off by default, and refuses every other button type |
 
 ### Quick example: create a button
 

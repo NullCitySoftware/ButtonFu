@@ -31,6 +31,8 @@ export interface ApiMethodSchema {
     returns: string;
     supportsBatch?: boolean;
     example?: { params: unknown; result: unknown };
+    /** Further worked examples, params only, for shapes the main example does not cover. */
+    additionalExamples?: { params: unknown }[];
 }
 
 export interface AutomationGuidance {
@@ -75,7 +77,7 @@ const buttonFields: ApiParamField[] = [
     { name: 'name', type: 'string', required: true, description: 'Display name.', maxLength: 500 },
     { name: 'locality', type: 'string', required: true, description: 'Storage scope.', enum: ['Global', 'Local'] },
     { name: 'description', type: 'string', required: false, description: 'Tooltip / description text.', maxLength: 5000 },
-    { name: 'type', type: 'string', required: false, description: 'Action type. Defaults to TerminalCommand.', enum: ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'], default: 'TerminalCommand' },
+    { name: 'type', type: 'string', required: false, description: 'Action type. Defaults to TerminalCommand.', enum: ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand', 'ClaudeCommand'], default: 'TerminalCommand' },
     { name: 'executionText', type: 'string', required: false, description: 'The command, prompt, or task name to execute.', maxLength: 100000 },
     { name: 'terminals', type: 'TerminalTab[]', required: false, description: 'Multi-tab terminal configuration (replaces executionText for TerminalCommand).' },
     { name: 'category', type: 'string', required: false, description: 'Grouping label for the sidebar tree.', maxLength: 200, default: 'General' },
@@ -85,6 +87,18 @@ const buttonFields: ApiParamField[] = [
     { name: 'copilotMode', type: 'string', required: false, description: 'For CopilotCommand: chat mode.', enum: ['agent', 'ask', 'edit', 'plan'], default: 'agent' },
     { name: 'copilotAttachFiles', type: 'string[]', required: false, description: 'For CopilotCommand: workspace-relative file paths to attach.' },
     { name: 'copilotAttachActiveFile', type: 'boolean', required: false, description: 'For CopilotCommand: also attach the active editor file.' },
+    { name: 'claudeDestination', type: 'string', required: false, description: 'For ClaudeCommand: where the session starts. The default, panelPrefill, types the prompt into the Claude panel and waits for the user to send it; it also ignores claudeModel, claudeEffort and claudePermissionMode, because the panel has nowhere to put them. Every other destination runs the prompt and honours those fields.', enum: ['terminalHere', 'terminalNewWindow', 'externalTerminal', 'newVsCodeWindow', 'backgroundAgent', 'headlessThenPanel', 'panelPrefill'], default: 'panelPrefill' },
+    { name: 'claudeModel', type: 'string', required: false, description: 'For ClaudeCommand: model alias or full name (e.g. "opus"). Empty means the CLI default.' },
+    { name: 'claudeEffort', type: 'string', required: false, description: 'For ClaudeCommand: reasoning effort. Empty means the CLI default.', enum: ['', 'low', 'medium', 'high', 'xhigh', 'max'] },
+    { name: 'claudePermissionMode', type: 'string', required: false, description: 'For ClaudeCommand: permission mode the session starts in.', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'plan', 'manual', 'dontAsk'], default: 'bypassPermissions' },
+    { name: 'claudeCwd', type: 'string', required: false, description: 'For ClaudeCommand: working directory. Empty means the first workspace folder. Tokens are resolved.' },
+    { name: 'claudeTargetFolder', type: 'string', required: false, description: 'For ClaudeCommand with claudeDestination "newVsCodeWindow": the folder the new window opens. Required for that destination.' },
+    { name: 'claudeSessionName', type: 'string', required: false, description: 'For ClaudeCommand: session display name. Empty means the button name.' },
+    { name: 'claudeAddDirs', type: 'string[]', required: false, description: 'For ClaudeCommand: extra directories the session may read, one --add-dir each.' },
+    { name: 'claudeWorktree', type: 'boolean', required: false, description: 'For ClaudeCommand: run the session in a fresh git worktree.' },
+    { name: 'claudeWorktreeName', type: 'string', required: false, description: 'For ClaudeCommand: name for that worktree. Ignored unless claudeWorktree is true.' },
+    { name: 'claudeExtraArgs', type: 'string[]', required: false, description: 'For ClaudeCommand: extra CLI arguments as argv entries. Nothing is split on spaces, so a flag and its value are two entries.' },
+    { name: 'claudeNewWindow', type: 'boolean', required: false, description: 'For ClaudeCommand panel destinations: move the Claude panel into its own window.' },
     { name: 'sortOrder', type: 'number', required: false, description: 'Sort position within the category.' },
     { name: 'warnBeforeExecution', type: 'boolean', required: false, description: 'Show a confirmation dialog before executing.' },
     { name: 'userTokens', type: 'UserToken[]', required: false, description: 'User-defined tokens for prompt/command injection.' }
@@ -149,7 +163,16 @@ const methods: ApiMethodSchema[] = [
         example: {
             params: { name: 'Run Tests', locality: 'Global', type: 'TerminalCommand', executionText: 'npm test', category: 'Dev', icon: 'beaker' },
             result: { success: true, data: { id: '<generated-uuid>', name: 'Run Tests', locality: 'Global', type: 'TerminalCommand', executionText: 'npm test', category: 'Dev', icon: 'beaker', colour: '' } }
-        }
+        },
+        additionalExamples: [
+            {
+                params: {
+                    name: 'Plan this repo', locality: 'Global', type: 'ClaudeCommand',
+                    executionText: 'Read AGENTS.md and summarise what this repo does.',
+                    claudeDestination: 'terminalNewWindow', claudeModel: 'opus', category: 'Claude', icon: 'sparkle'
+                }
+            }
+        ]
     },
     {
         method: 'buttonfu.api.getButton',
@@ -213,6 +236,27 @@ const methods: ApiMethodSchema[] = [
         supportsBatch: true
     },
     {
+        method: 'buttonfu.api.runButton',
+        description:
+            'Run a button. Off by default and Claude-only: it answers with an error unless '
+            + 'buttonfu.claude.allowBridgeRun is true, and it refuses any button whose type is not '
+            + 'ClaudeCommand. The three refusals are distinct: the setting being off, the button not '
+            + 'being found, and the button being the wrong type. A button that declares user tokens '
+            + 'with no default is also refused unless the values are supplied, because a bridge call '
+            + 'has nobody to ask. Warn Before Execution is skipped and said so in the result.',
+        params: [
+            { name: 'id', type: 'string', required: false, description: 'Button ID. Give this or a name.' },
+            { name: 'name', type: 'string', required: false, description: 'Button name, matched case-insensitively. Give this or an id.' },
+            { name: 'locality', type: 'string', required: false, description: 'Narrows a name match to one scope.', enum: ['Global', 'Local', 'Workspace'] },
+            { name: 'tokens', type: 'Record<string, string>', required: false, description: 'Values for the button user tokens, by name with or without the $ delimiters.' }
+        ],
+        returns: 'ApiResult<{ id: string, launched: true, notes?: string[] }>',
+        example: {
+            params: { name: 'Plan this repo', tokens: { Target: 'the router' } },
+            result: { success: true, data: { id: '<button-uuid>', launched: true } }
+        }
+    },
+    {
         method: 'buttonfu.api.getBridgeContext',
         description: 'Return the current bridge identity, workspace info, and store counts. Use this to verify which VS Code window you are connected to before performing local-scoped operations.',
         params: 'undefined (no parameters)',
@@ -249,7 +293,10 @@ export const AUTOMATION_GUIDANCE: AutomationGuidance = {
         'Do not mutate ButtonFu data by editing VS Code storage directly. ' +
             'Direct writes bypass validation, provenance tracking, UI refresh, and may corrupt or lose data.',
         'The internal storage format is not a stable API and may change between versions without notice.',
-        'Always use the ButtonFu Agent Bridge or buttonfu.api.* commands for automation.'
+        'Always use the ButtonFu Agent Bridge or buttonfu.api.* commands for automation.',
+        'buttonfu.api.runButton is the only method that executes anything. It is opt-in through '
+            + 'buttonfu.claude.allowBridgeRun, it runs Claude buttons and nothing else, and every '
+            + 'other kind of change still has to go through the create, update and delete methods.'
     ]
 };
 

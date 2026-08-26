@@ -5,9 +5,18 @@ import * as fs from 'fs';
 import {
     AVAILABLE_ICONS,
     BUTTON_TYPE_INFO,
+    BUTTON_TYPES,
     ButtonConfig,
     ButtonLocality,
+    CLAUDE_DESTINATION_INFO,
+    CLAUDE_EFFORTS,
+    CLAUDE_FIELD_APPLICABILITY,
+    CLAUDE_MODEL_SUGGESTIONS,
+    CLAUDE_PERMISSION_MODES,
+    ClaudeDestination,
+    DEFAULT_CLAUDE_DESTINATION,
     COPILOT_MODES,
+    DEFAULT_CLAUDE_PERMISSION_MODE,
     NOTE_DEFAULT_ACTIONS,
     NoteConfig,
     SYSTEM_TOKENS,
@@ -245,7 +254,7 @@ export class ButtonEditorPanel {
                     || typeof btn.id !== 'string' || !btn.id
                     || typeof btn.name !== 'string' || !btn.name
                     || typeof btn.type !== 'string'
-                    || !['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'].includes(btn.type)
+                    || !BUTTON_TYPES.includes(btn.type as ButtonConfig['type'])
                     || typeof btn.locality !== 'string'
                     || !['Global', 'Local'].includes(btn.locality)
                 ) {
@@ -262,7 +271,7 @@ export class ButtonEditorPanel {
                     console.warn('ButtonFu: saveButton rejected — field length exceeded');
                     break;
                 }
-                await this.store.saveButton(btn as ButtonConfig);
+                await this.store.saveButton({ ...btn, ...this.claudeFieldsFrom(btn) } as ButtonConfig);
                 break;
             }
             case 'deleteButton': {
@@ -344,6 +353,22 @@ export class ButtonEditorPanel {
                         'workbench.action.openGlobalKeybindings',
                         `buttonfu.run.${buttonId}`
                     );
+                }
+                break;
+            }
+            case 'pickClaudeFolder': {
+                const uris = await vscode.window.showOpenDialog({
+                    canSelectFiles: false,
+                    canSelectFolders: true,
+                    canSelectMany: false,
+                    openLabel: 'Select folder'
+                });
+                if (uris && uris.length > 0) {
+                    this.panel.webview.postMessage({
+                        type: 'claudeFolderResult',
+                        target: message.target,
+                        folder: uris[0].fsPath
+                    });
                 }
                 break;
             }
@@ -462,8 +487,7 @@ export class ButtonEditorPanel {
             case 'testButton': {
                 const raw = message.button;
                 if (!raw || typeof raw !== 'object') { break; }
-                const validTypes = ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'];
-                if (!validTypes.includes(raw.type as string)) { break; }
+                if (!BUTTON_TYPES.includes(raw.type as ButtonConfig['type'])) { break; }
                 if (!ButtonEditorPanel._executeButtonTest) { break; }
                 const testBtn: ButtonConfig = {
                     id: typeof raw.id === 'string' && raw.id ? raw.id : '__test__',
@@ -488,6 +512,7 @@ export class ButtonEditorPanel {
                         ? (raw.copilotAttachFiles as unknown[]).filter((f): f is string => typeof f === 'string')
                         : [],
                     copilotAttachActiveFile: Boolean(raw.copilotAttachActiveFile),
+                    ...this.claudeFieldsFrom(raw),
                     warnBeforeExecution: false,
                     userTokens: Array.isArray(raw.userTokens) ? raw.userTokens : []
                 };
@@ -495,6 +520,46 @@ export class ButtonEditorPanel {
                 break;
             }
         }
+    }
+
+    /**
+     * Coerces the twelve `claude*` fields arriving from the webview.
+     *
+     * The webview is not a trust boundary in the security sense, but it is a version boundary: a
+     * button stored before this feature existed arrives with every field missing. Strings fall
+     * back to empty, arrays are filtered down to strings, an unknown destination becomes the
+     * default, and an unknown permission mode becomes whatever the setting says.
+     */
+    private claudeFieldsFrom(raw: Record<string, unknown>): Partial<ButtonConfig> {
+        const text = (field: string): string => (typeof raw[field] === 'string' ? raw[field] as string : '');
+        const strings = (field: string): string[] => (Array.isArray(raw[field])
+            ? (raw[field] as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+            : []);
+
+        const destination = Object.prototype.hasOwnProperty.call(CLAUDE_DESTINATION_INFO, raw.claudeDestination as string)
+            ? raw.claudeDestination as ClaudeDestination
+            : DEFAULT_CLAUDE_DESTINATION;
+
+        const configuredDefault = vscode.workspace.getConfiguration('buttonfu')
+            .get<string>('claude.defaultPermissionMode') ?? DEFAULT_CLAUDE_PERMISSION_MODE;
+        const permissionMode = CLAUDE_PERMISSION_MODES.includes(raw.claudePermissionMode as string)
+            ? raw.claudePermissionMode as string
+            : (CLAUDE_PERMISSION_MODES.includes(configuredDefault) ? configuredDefault : DEFAULT_CLAUDE_PERMISSION_MODE);
+
+        return {
+            claudeDestination: destination,
+            claudeModel: text('claudeModel'),
+            claudeEffort: CLAUDE_EFFORTS.includes(text('claudeEffort')) ? text('claudeEffort') : '',
+            claudePermissionMode: permissionMode,
+            claudeCwd: text('claudeCwd'),
+            claudeTargetFolder: text('claudeTargetFolder'),
+            claudeSessionName: text('claudeSessionName'),
+            claudeAddDirs: strings('claudeAddDirs'),
+            claudeWorktree: Boolean(raw.claudeWorktree),
+            claudeWorktreeName: text('claudeWorktreeName'),
+            claudeExtraArgs: strings('claudeExtraArgs'),
+            claudeNewWindow: Boolean(raw.claudeNewWindow)
+        };
     }
 
     private getButtonKeybindings(): Record<string, string> {
@@ -566,6 +631,15 @@ export class ButtonEditorPanel {
         const nonce = getNonce();
         const iconsJson = JSON.stringify(AVAILABLE_ICONS);
         const modesJson = JSON.stringify(COPILOT_MODES);
+        const claudeDestinationsJson = JSON.stringify(CLAUDE_DESTINATION_INFO);
+        const claudeEffortsJson = JSON.stringify(CLAUDE_EFFORTS);
+        const claudePermissionModesJson = JSON.stringify(CLAUDE_PERMISSION_MODES);
+        const claudeModelSuggestionsJson = JSON.stringify(CLAUDE_MODEL_SUGGESTIONS);
+        const claudeApplicabilityJson = JSON.stringify(CLAUDE_FIELD_APPLICABILITY);
+        const claudeDefaultDestinationJson = JSON.stringify(DEFAULT_CLAUDE_DESTINATION);
+        const claudeDefaultPermissionModeJson = JSON.stringify(
+            vscode.workspace.getConfiguration('buttonfu').get<string>('claude.defaultPermissionMode')
+                ?? DEFAULT_CLAUDE_PERMISSION_MODE);
         const typeInfoJson = JSON.stringify(BUTTON_TYPE_INFO);
         const systemTokensJson = JSON.stringify(SYSTEM_TOKENS);
         const autocompleteStyles = getAutocompleteStyles();
@@ -632,9 +706,6 @@ export class ButtonEditorPanel {
 
         const codiconsUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css')
-        );
-        const editorJsUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, 'resources', 'editor.js')
         );
         const iconImg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:middle" aria-hidden="true"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M3 14a6 2 0 1 0 12 0a6 2 0 1 0 -12 0" /><path d="M3 14v5c0 1.105 2.686 2 6 2s6 -.895 6 -2v-5" /><path d="M9 5a6 2 0 1 0 12 0a6 2 0 1 0 -12 0" /><path d="M9 5v3" /><path d="M18.365 11.656c1.59 -.36 2.635 -.966 2.635 -1.656v-5" /></svg>`;
 
@@ -1038,6 +1109,42 @@ ${colourFieldStyles}
             background: var(--vscode-textBlockQuote-background);
         }
         .copilot-section.visible { display: block; }
+
+        /* ─── Claude section ─── */
+        .claude-section {
+            display: none;
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 8px;
+            background: var(--vscode-textBlockQuote-background);
+        }
+        .claude-section.visible { display: block; }
+        .claude-section h3 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--vscode-textLink-foreground);
+        }
+        .claude-section .claude-field { display: none; }
+        .claude-section .claude-field.visible { display: block; }
+        .claude-warning {
+            display: none;
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.4;
+            background: var(--vscode-inputValidation-warningBackground);
+            border: 1px solid var(--vscode-inputValidation-warningBorder);
+            color: var(--vscode-foreground);
+        }
+        .claude-warning.visible { display: block; }
+        .path-row { display: flex; gap: 6px; align-items: center; }
+        .path-row input { flex: 1; }
         .copilot-section h3 {
             font-size: 13px;
             font-weight: 600;
@@ -1808,6 +1915,7 @@ ${autocompleteStyles}
                         <option value="PaletteAction">Command Palette Action</option>
                         <option value="TaskExecution">Task Execution</option>
                         <option value="CopilotCommand">Copilot Command</option>
+                        <option value="ClaudeCommand">Claude Command</option>
                     </select>
                     <div class="field-help" id="typeHelp"></div>
                 </div>
@@ -1954,6 +2062,102 @@ ${modelAutocompleteMarkup}
                     </div>
                     <div class="file-chips" id="fileChips"></div>
                     <div class="field-help">Browse for files or search workspace files to attach to the Copilot chat context</div>
+                </div>
+            </div>
+
+            <!-- Claude-specific fields -->
+            <div class="claude-section" id="claudeSection">
+                <h3><span class="codicon codicon-sparkle"></span> Claude Settings</h3>
+                <div class="form-group">
+                    <label>Where it runs</label>
+                    <select id="btn-claudeDestination"></select>
+                    <div class="field-help" id="claudeDestinationHelp"></div>
+                    <div class="claude-warning" id="claudeNoRunWarning">
+                        <strong>This types the prompt into the Claude panel and stops.</strong> You press Enter to send it.
+                        Model, effort and permissions are chosen inside the panel, not here, because the panel has nowhere to take them from.
+                        Pick any other destination if you want the button to run the prompt itself.
+                    </div>
+                </div>
+                <div class="form-row claude-field" id="claudeField-claudeModel" data-claude-field="claudeModel">
+                    <div class="form-group">
+                        <label>Model</label>
+                        <input type="text" id="btn-claudeModel" list="claudeModelSuggestions" placeholder="default" />
+                        <datalist id="claudeModelSuggestions"></datalist>
+                        <div class="field-help">Leave empty for the Claude default. An alias such as "opus", or a full model name.</div>
+                    </div>
+                    <div class="form-group claude-field" id="claudeField-claudeEffort" data-claude-field="claudeEffort">
+                        <label>Effort</label>
+                        <select id="btn-claudeEffort"></select>
+                        <div class="field-help">How hard Claude thinks before answering. Empty leaves it to Claude.</div>
+                    </div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudePermissionMode" data-claude-field="claudePermissionMode">
+                    <label>Permissions</label>
+                    <select id="btn-claudePermissionMode"></select>
+                    <div class="field-help">Bypass runs everything without asking, which is what a one-click button usually wants and what a new Claude button starts on. Accept edits lets Claude write files but asks before it runs a command. Manual asks every time.</div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeCwd" data-claude-field="claudeCwd">
+                    <label>Working Directory</label>
+                    <div class="path-row">
+                        <input type="text" id="btn-claudeCwd" placeholder="The first workspace folder" />
+                        <button class="btn btn-secondary btn-sm" id="pickClaudeCwdBtn" type="button">
+                            <span class="codicon codicon-folder-opened"></span> Browse...
+                        </button>
+                    </div>
+                    <div class="field-help">Where the session starts. Tokens such as $WorkspaceFolder$ work here.</div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeTargetFolder" data-claude-field="claudeTargetFolder">
+                    <label>Folder To Open <span style="color:var(--vscode-errorForeground)">*</span></label>
+                    <div class="path-row">
+                        <input type="text" id="btn-claudeTargetFolder" placeholder="Required: the folder the new window opens" />
+                        <button class="btn btn-secondary btn-sm" id="pickClaudeTargetBtn" type="button">
+                            <span class="codicon codicon-folder-opened"></span> Browse...
+                        </button>
+                    </div>
+                    <div class="field-help">The new VS Code window opens this folder, and the session runs inside it.</div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeSessionName" data-claude-field="claudeSessionName">
+                    <label>Session Name</label>
+                    <input type="text" id="btn-claudeSessionName" placeholder="The button name" />
+                    <div class="field-help">Names the session in Claude's picker and the terminal title.</div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeAddDirs" data-claude-field="claudeAddDirs">
+                    <label>Extra Directories</label>
+                    <div class="path-row">
+                        <button class="btn btn-secondary btn-sm" id="pickClaudeAddDirBtn" type="button">
+                            <span class="codicon codicon-add"></span> Browse...
+                        </button>
+                        <input type="text" id="claudeAddDirInput" placeholder="Type a path and press Enter" />
+                    </div>
+                    <div class="file-chips" id="claudeAddDirChips"></div>
+                    <div class="field-help">Folders outside the working directory that Claude may also read.</div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeWorktree" data-claude-field="claudeWorktree">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label class="toggle-switch" style="margin:0">
+                            <input type="checkbox" id="btn-claudeWorktree" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <label for="btn-claudeWorktree" style="margin:0;cursor:pointer">Run in a fresh git worktree</label>
+                    </div>
+                    <div class="field-help">Claude works in its own checkout, so your files are untouched until you merge.</div>
+                    <div id="claudeWorktreeNameGroup" style="margin-top:8px;display:none">
+                        <input type="text" id="btn-claudeWorktreeName" placeholder="Worktree name (optional)" />
+                    </div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeExtraArgs" data-claude-field="claudeExtraArgs">
+                    <label>Extra Arguments</label>
+                    <textarea id="btn-claudeExtraArgs" rows="3" placeholder="--append-system-prompt&#10;Answer in British English."></textarea>
+                    <div class="field-help">One argument per line, and a value goes on its own line. Nothing here is split on spaces or read by a shell, so the example above is two lines: the flag, then its text.</div>
+                </div>
+                <div class="form-group claude-field" id="claudeField-claudeNewWindow" data-claude-field="claudeNewWindow">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <label class="toggle-switch" style="margin:0">
+                            <input type="checkbox" id="btn-claudeNewWindow" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <label for="btn-claudeNewWindow" style="margin:0;cursor:pointer">Open the Claude panel in its own window</label>
+                    </div>
                 </div>
             </div>
             </div><!-- end editor-col-left -->
@@ -2227,6 +2431,13 @@ ${noteModelAutocompleteMarkup}
         const vscode = acquireVsCodeApi();
         const ICONS = ${iconsJson};
         const MODES = ${modesJson};
+        const CLAUDE_DESTINATIONS = ${claudeDestinationsJson};
+        const CLAUDE_EFFORTS = ${claudeEffortsJson};
+        const CLAUDE_PERMISSION_MODES = ${claudePermissionModesJson};
+        const CLAUDE_MODEL_SUGGESTIONS = ${claudeModelSuggestionsJson};
+        const CLAUDE_FIELD_APPLICABILITY = ${claudeApplicabilityJson};
+        const CLAUDE_DEFAULT_DESTINATION = ${claudeDefaultDestinationJson};
+        const CLAUDE_DEFAULT_PERMISSION_MODE = ${claudeDefaultPermissionModeJson};
         const TYPE_INFO = ${typeInfoJson};
         const SYSTEM_TOKENS = ${systemTokensJson};
         const DEFAULT_NOTE_ICON = ${JSON.stringify(getDefaultNoteIcon())};
@@ -2388,6 +2599,13 @@ ${sharedControlScript}
                     if (pendingNoteFileSearch) {
                         pendingNoteFileSearch = false;
                         renderNoteWorkspaceFileList(cachedWorkspaceFiles, document.getElementById('noteWorkspaceFileSearch').value);
+                    }
+                    break;
+                case 'claudeFolderResult':
+                    if (msg.folder) {
+                        if (msg.target === 'cwd') { document.getElementById('btn-claudeCwd').value = msg.folder; }
+                        else if (msg.target === 'targetFolder') { document.getElementById('btn-claudeTargetFolder').value = msg.folder; }
+                        else if (msg.target === 'addDir') { addClaudeDir(msg.folder); }
                     }
                     break;
                 case 'editNoteNode':
@@ -2586,6 +2804,15 @@ ${sharedControlScript}
                                     '<span class="meta-tag"><span class="codicon codicon-symbol-variable"></span> Tokenised [' + tokenCount + ']</span>'
                                 : '';
 
+                        const claudeDestinationInfo = CLAUDE_DESTINATIONS[b.claudeDestination || CLAUDE_DEFAULT_DESTINATION];
+                        const claudePart = b.type === 'ClaudeCommand'
+                                ? '<span class="meta-sep">·</span>' +
+                                    '<span class="meta-tag"><span class="codicon codicon-sparkle"></span> ' + escapeHtml(claudeDestinationInfo ? claudeDestinationInfo.label : 'Claude') + '</span>' +
+                                    ((b.claudeModel || '').trim()
+                                        ? '<span class="meta-sep">·</span><span class="meta-tag"><span class="codicon codicon-hubot"></span> ' + escapeHtml(b.claudeModel.trim()) + '</span>'
+                                        : '')
+                                : '';
+
                         const modelPart = b.type === 'CopilotCommand'
                                 ? '<span class="meta-sep">·</span>' +
                                     '<span class="meta-tag"><span class="codicon codicon-hubot"></span> ' + escapeHtml((b.copilotModel || '').trim() || 'auto') + '</span>'
@@ -2633,6 +2860,7 @@ ${sharedControlScript}
                 settingsPart +
                 tokenPart +
                 modelPart +
+                claudePart +
                 shortcutPart +
                 '</div>' +
                 '</div>' +
@@ -2732,6 +2960,18 @@ ${sharedControlScript}
                 copilotMode: 'agent',
                 copilotAttachFiles: [],
                 copilotAttachActiveFile: false,
+                claudeDestination: CLAUDE_DEFAULT_DESTINATION,
+                claudeModel: '',
+                claudeEffort: '',
+                claudePermissionMode: CLAUDE_DEFAULT_PERMISSION_MODE,
+                claudeCwd: '',
+                claudeTargetFolder: '',
+                claudeSessionName: '',
+                claudeAddDirs: [],
+                claudeWorktree: false,
+                claudeWorktreeName: '',
+                claudeExtraArgs: [],
+                claudeNewWindow: false,
                 warnBeforeExecution: false,
                 userTokens: [],
                 createdBy: 'User',
@@ -2831,6 +3071,7 @@ ${sharedControlScript}
             renderFileChips();
             document.getElementById('btn-copilotAttachActiveFile').checked = btn.copilotAttachActiveFile ?? false;
             document.getElementById('btn-warnBeforeExecution').checked = btn.warnBeforeExecution ?? false;
+            loadClaudeFields(btn);
 
             currentUserTokens = (btn.userTokens || []).map(t => Object.assign({}, t));
             editingTokenIndex = -1;
@@ -2894,6 +3135,7 @@ ${sharedControlScript}
                 copilotMode: document.getElementById('btn-copilotMode').value,
                 copilotAttachFiles: currentAttachFiles.slice(),
                 copilotAttachActiveFile: document.getElementById('btn-copilotAttachActiveFile').checked,
+                ...collectClaudeFields(),
                 warnBeforeExecution: document.getElementById('btn-warnBeforeExecution').checked,
                 userTokens: currentUserTokens.map(t => Object.assign({}, t)),
                 sortOrder: currentButton ? currentButton.sortOrder : undefined
@@ -2940,6 +3182,8 @@ ${sharedControlScript}
                 name: src.name + ' (Copy)',
                 sortOrder: undefined,
                 copilotAttachFiles: (src.copilotAttachFiles || []).slice(),
+                claudeAddDirs: (src.claudeAddDirs || []).slice(),
+                claudeExtraArgs: (src.claudeExtraArgs || []).slice(),
                 userTokens: (src.userTokens || []).map(t => Object.assign({}, t))
             });
             isNewButton = true;
@@ -3018,6 +3262,7 @@ ${sharedControlScript}
             modelAutocomplete.close();
 
             const copilotSection = document.getElementById('copilotSection');
+            const claudeSection = document.getElementById('claudeSection');
             const execLabel = document.getElementById('executionLabel');
             const execHelp = document.getElementById('executionHelp');
             const execField = document.getElementById('btn-executionText');
@@ -3051,6 +3296,8 @@ ${sharedControlScript}
             }
 
             copilotSection.classList.toggle('visible', type === 'CopilotCommand');
+            claudeSection.classList.toggle('visible', type === 'ClaudeCommand');
+            if (type === 'ClaudeCommand') { applyClaudeDestination(); }
 
             switch (type) {
                 case 'TerminalCommand':
@@ -3073,6 +3320,11 @@ ${sharedControlScript}
                     execField.placeholder = 'Explain this code and suggest improvements...';
                     execHelp.textContent = 'The prompt text to send to GitHub Copilot Chat';
                     if (!cachedModels) vscode.postMessage({ type: 'getModels' });
+                    break;
+                case 'ClaudeCommand':
+                    execLabel.textContent = 'Prompt';
+                    execField.placeholder = 'Read AGENTS.md and summarise what this repo does...';
+                    execHelp.textContent = 'The prompt to send to Claude Code.';
                     break;
             }
 
@@ -3950,7 +4202,148 @@ ${sharedControlScript}
             syncNameValidation();
         });
         document.getElementById('btn-type').addEventListener('change', () => onTypeChanged());
+
+        // -- Claude --
+
+        let currentClaudeAddDirs = [];
+
+        /** Fills the Claude selects from the tables the host serialised in. Runs once. */
+        function initClaudeControls() {
+            document.getElementById('btn-claudeDestination').innerHTML = Object.keys(CLAUDE_DESTINATIONS).map(key =>
+                '<option value="' + escapeAttr(key) + '">' + escapeHtml(CLAUDE_DESTINATIONS[key].label) + '</option>'
+            ).join('');
+
+            document.getElementById('btn-claudeEffort').innerHTML = CLAUDE_EFFORTS.map(effort =>
+                '<option value="' + escapeAttr(effort) + '">' + escapeHtml(effort || 'Default') + '</option>'
+            ).join('');
+
+            document.getElementById('btn-claudePermissionMode').innerHTML = CLAUDE_PERMISSION_MODES.map(mode =>
+                '<option value="' + escapeAttr(mode) + '">' + escapeHtml(claudePermissionModeLabel(mode)) + '</option>'
+            ).join('');
+
+            document.getElementById('claudeModelSuggestions').innerHTML = CLAUDE_MODEL_SUGGESTIONS.map(model =>
+                '<option value="' + escapeAttr(model) + '"></option>'
+            ).join('');
+        }
+
+        /** Turns a permission-mode identifier into something a person reads. */
+        function claudePermissionModeLabel(mode) {
+            switch (mode) {
+                case 'bypassPermissions': return 'Bypass (never ask)';
+                case 'acceptEdits': return 'Accept edits (ask before commands)';
+                case 'auto': return 'Auto';
+                case 'plan': return 'Plan only (no changes)';
+                case 'manual': return 'Manual (ask every time)';
+                case 'dontAsk': return 'Do not ask';
+                default: return mode;
+            }
+        }
+
+        /** Shows only the fields the chosen destination can honour, and the prefill warning. */
+        function applyClaudeDestination() {
+            const destination = document.getElementById('btn-claudeDestination').value;
+            const info = CLAUDE_DESTINATIONS[destination] || {};
+            const applicable = CLAUDE_FIELD_APPLICABILITY[destination] || [];
+
+            document.getElementById('claudeDestinationHelp').textContent = info.description || '';
+            document.getElementById('claudeNoRunWarning').classList.toggle('visible', info.runsPrompt === false);
+
+            document.querySelectorAll('[data-claude-field]').forEach(el => {
+                el.classList.toggle('visible', applicable.indexOf(el.dataset.claudeField) !== -1);
+            });
+
+            document.getElementById('claudeWorktreeNameGroup').style.display =
+                document.getElementById('btn-claudeWorktree').checked ? '' : 'none';
+        }
+
+        /** Redraws the extra-directory chips. */
+        function renderClaudeAddDirChips() {
+            document.getElementById('claudeAddDirChips').innerHTML = currentClaudeAddDirs.map((dir, i) =>
+                '<span class="file-chip">' +
+                '<span class="codicon codicon-folder"></span> ' + escapeHtml(dir) +
+                ' <span class="remove-file" data-claude-dir-index="' + i + '">×</span></span>'
+            ).join('');
+        }
+
+        /** Adds a directory to the list, ignoring blanks and duplicates. */
+        function addClaudeDir(dir) {
+            const trimmed = (dir || '').trim();
+            if (!trimmed || currentClaudeAddDirs.indexOf(trimmed) !== -1) { return; }
+            currentClaudeAddDirs.push(trimmed);
+            renderClaudeAddDirChips();
+        }
+
+        /** Loads the Claude controls from a stored button. */
+        function loadClaudeFields(btn) {
+            document.getElementById('btn-claudeDestination').value = btn.claudeDestination || CLAUDE_DEFAULT_DESTINATION;
+            document.getElementById('btn-claudeModel').value = btn.claudeModel || '';
+            document.getElementById('btn-claudeEffort').value = btn.claudeEffort || '';
+            document.getElementById('btn-claudePermissionMode').value =
+                btn.claudePermissionMode || CLAUDE_DEFAULT_PERMISSION_MODE;
+            document.getElementById('btn-claudeCwd').value = btn.claudeCwd || '';
+            document.getElementById('btn-claudeTargetFolder').value = btn.claudeTargetFolder || '';
+            document.getElementById('btn-claudeSessionName').value = btn.claudeSessionName || '';
+            document.getElementById('btn-claudeWorktree').checked = btn.claudeWorktree ?? false;
+            document.getElementById('btn-claudeWorktreeName').value = btn.claudeWorktreeName || '';
+            document.getElementById('btn-claudeExtraArgs').value = (btn.claudeExtraArgs || []).join('\\n');
+            document.getElementById('btn-claudeNewWindow').checked = btn.claudeNewWindow ?? false;
+
+            currentClaudeAddDirs = (btn.claudeAddDirs || []).slice();
+            renderClaudeAddDirChips();
+            applyClaudeDestination();
+        }
+
+        /** Splits a textarea into argv entries: one per line, blanks dropped, each trimmed. */
+        function claudeLinesToArray(text) {
+            return (text || '').split('\\n').map(line => line.trim()).filter(line => line.length > 0);
+        }
+
+        /** Reads the Claude controls back into the object being saved. */
+        function collectClaudeFields() {
+            return {
+                claudeDestination: document.getElementById('btn-claudeDestination').value,
+                claudeModel: document.getElementById('btn-claudeModel').value.trim(),
+                claudeEffort: document.getElementById('btn-claudeEffort').value,
+                claudePermissionMode: document.getElementById('btn-claudePermissionMode').value,
+                claudeCwd: document.getElementById('btn-claudeCwd').value.trim(),
+                claudeTargetFolder: document.getElementById('btn-claudeTargetFolder').value.trim(),
+                claudeSessionName: document.getElementById('btn-claudeSessionName').value.trim(),
+                claudeAddDirs: currentClaudeAddDirs.slice(),
+                claudeWorktree: document.getElementById('btn-claudeWorktree').checked,
+                claudeWorktreeName: document.getElementById('btn-claudeWorktreeName').value.trim(),
+                claudeExtraArgs: claudeLinesToArray(document.getElementById('btn-claudeExtraArgs').value),
+                claudeNewWindow: document.getElementById('btn-claudeNewWindow').checked
+            };
+        }
+
         document.getElementById('pickFilesBtn').addEventListener('click', () => pickFiles());
+
+        initClaudeControls();
+        document.getElementById('btn-claudeDestination').addEventListener('change', () => applyClaudeDestination());
+        document.getElementById('btn-claudeWorktree').addEventListener('change', () => applyClaudeDestination());
+        document.getElementById('pickClaudeCwdBtn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'pickClaudeFolder', target: 'cwd' });
+        });
+        document.getElementById('pickClaudeTargetBtn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'pickClaudeFolder', target: 'targetFolder' });
+        });
+        document.getElementById('pickClaudeAddDirBtn').addEventListener('click', () => {
+            vscode.postMessage({ type: 'pickClaudeFolder', target: 'addDir' });
+        });
+        document.getElementById('claudeAddDirInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addClaudeDir(e.target.value);
+                e.target.value = '';
+            }
+        });
+        document.getElementById('claudeAddDirChips').addEventListener('click', (e) => {
+            const remove = e.target.closest('[data-claude-dir-index]');
+            if (remove) {
+                currentClaudeAddDirs.splice(Number(remove.dataset.claudeDirIndex), 1);
+                renderClaudeAddDirChips();
+            }
+        });
         document.getElementById('setShortcutBtn').addEventListener('click', () => {
             if (currentButton && currentButton.id) {
                 vscode.postMessage({ type: 'openKeybinding', buttonId: currentButton.id });
@@ -4303,7 +4696,6 @@ ${sharedControlScript}
             }
         });
     </script>
-    <script src="${editorJsUri}" nonce="${nonce}"></script>
 </body>
 </html>`;
     }

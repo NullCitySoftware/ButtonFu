@@ -9,7 +9,22 @@ export type ButtonType =
     | 'TerminalCommand'
     | 'PaletteAction'
     | 'TaskExecution'
-    | 'CopilotCommand';
+    | 'CopilotCommand'
+    | 'ClaudeCommand';
+
+/** Every valid button type, in editor display order. The single source of truth. */
+export const BUTTON_TYPES: readonly ButtonType[] =
+    ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand', 'ClaudeCommand'];
+
+/** Where a ClaudeCommand button starts its session. */
+export type ClaudeDestination =
+    | 'terminalHere'        // integrated terminal in this window
+    | 'terminalNewWindow'   // editor terminal, torn off into its own window
+    | 'externalTerminal'    // a terminal outside VS Code entirely
+    | 'newVsCodeWindow'     // a new VS Code window on another folder, seeded on startup
+    | 'panelPrefill'        // the native Claude panel, prompt typed but NOT sent
+    | 'headlessThenPanel'   // run with no UI, then open the finished session in the panel
+    | 'backgroundAgent';    // claude --bg, managed from the agents list
 
 /**
  * Where the button is stored.
@@ -157,6 +172,34 @@ export interface ButtonConfig {
     copilotAttachFiles: string[];
     /** For CopilotCommand: also attach the currently active editor file */
     copilotAttachActiveFile?: boolean;
+    /** For ClaudeCommand: where the session starts. */
+    claudeDestination?: ClaudeDestination;
+    /** For ClaudeCommand: model alias or full name. Empty means the CLI default. */
+    claudeModel?: string;
+    /** For ClaudeCommand: effort level. Empty means the CLI default. */
+    claudeEffort?: string;
+    /** For ClaudeCommand: permission mode passed to --permission-mode. */
+    claudePermissionMode?: string;
+    /** For ClaudeCommand: working directory. Empty means the first workspace folder. Token-resolved. */
+    claudeCwd?: string;
+    /** For ClaudeCommand, newVsCodeWindow only: the folder the new window opens. Token-resolved. */
+    claudeTargetFolder?: string;
+    /** For ClaudeCommand: session display name passed to -n. Empty means the button name. */
+    claudeSessionName?: string;
+    /** For ClaudeCommand: extra directories passed as repeated --add-dir. Token-resolved. */
+    claudeAddDirs?: string[];
+    /** For ClaudeCommand: run the session in a fresh git worktree (--worktree). */
+    claudeWorktree?: boolean;
+    /** For ClaudeCommand: optional name for that worktree. Ignored unless claudeWorktree is true. */
+    claudeWorktreeName?: string;
+    /**
+     * For ClaudeCommand: extra CLI arguments, already split into argv entries.
+     * This is an argv array, not a command line: nothing splits it on spaces and nothing
+     * passes it through a shell, so a flag and its value are two separate entries.
+     */
+    claudeExtraArgs?: string[];
+    /** For ClaudeCommand, panel destinations only: move the Claude panel into its own window. */
+    claudeNewWindow?: boolean;
     /** Sort position within the locality group */
     sortOrder?: number;
     /** Whether to show a confirmation dialog before executing */
@@ -291,8 +334,16 @@ export const SYSTEM_TOKENS: SystemTokenDef[] = [
     { token: '$RandomUUID$', description: 'A random UUID (generated once per button click \u2014 all occurrences in the same command get the same value)', dataType: 'String' },
 ];
 
-/** Creates a new empty button with defaults */
-export function createDefaultButton(locality: ButtonLocality = 'Global'): ButtonConfig {
+/**
+ * Creates a new empty button with defaults.
+ *
+ * `defaultPermissionMode` is the `buttonfu.claude.defaultPermissionMode` setting. It is passed
+ * in rather than read here, because this function is pure and must not import `vscode`.
+ */
+export function createDefaultButton(
+    locality: ButtonLocality = 'Global',
+    defaultPermissionMode?: string
+): ButtonConfig {
     return {
         id: generateId(),
         name: '',
@@ -307,6 +358,20 @@ export function createDefaultButton(locality: ButtonLocality = 'Global'): Button
         copilotMode: 'agent',
         copilotAttachFiles: [],
         copilotAttachActiveFile: false,
+        claudeDestination: DEFAULT_CLAUDE_DESTINATION,
+        claudeModel: '',
+        claudeEffort: '',
+        claudePermissionMode: CLAUDE_PERMISSION_MODES.includes(defaultPermissionMode ?? '')
+            ? defaultPermissionMode!
+            : DEFAULT_CLAUDE_PERMISSION_MODE,
+        claudeCwd: '',
+        claudeTargetFolder: '',
+        claudeSessionName: '',
+        claudeAddDirs: [],
+        claudeWorktree: false,
+        claudeWorktreeName: '',
+        claudeExtraArgs: [],
+        claudeNewWindow: false,
         warnBeforeExecution: false,
         userTokens: [],
         createdBy: 'User',
@@ -485,7 +550,111 @@ export interface ApiResult<T = unknown> {
 
 /** Copilot modes */
 export const COPILOT_MODES = ['agent', 'ask', 'edit', 'plan'];
+
+/** Permission modes a Claude session can start in, in editor display order. */
+export const CLAUDE_PERMISSION_MODES =
+    ['bypassPermissions', 'acceptEdits', 'auto', 'plan', 'manual', 'dontAsk'];
+
+/** The permission mode a Claude button falls back to. Unattended by design. */
+export const DEFAULT_CLAUDE_PERMISSION_MODE = 'bypassPermissions';
+
+/**
+ * Where a new Claude button starts, and what an unrecognised destination falls back to.
+ *
+ * The panel is deliberate: it types the prompt and waits, so a button's first click never sets an
+ * unattended session off against files before its author has read the prompt back. Every other
+ * destination runs it, and the editor says which is which.
+ */
+export const DEFAULT_CLAUDE_DESTINATION: ClaudeDestination = 'panelPrefill';
+
+/** Effort levels. The empty entry means "leave it to the CLI default". */
+export const CLAUDE_EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+/** Suggestions only. The field stays free text so a full model name works. */
+export const CLAUDE_MODEL_SUGGESTIONS = ['opus', 'sonnet', 'haiku', 'fable'];
+
+/** The fields every destination that actually invokes the CLI can set. */
+const CLAUDE_CLI_FIELDS: readonly string[] = [
+    'claudeModel',
+    'claudeEffort',
+    'claudePermissionMode',
+    'claudeCwd',
+    'claudeSessionName',
+    'claudeAddDirs',
+    'claudeWorktree',
+    'claudeWorktreeName',
+    'claudeExtraArgs'
+];
+
+/**
+ * User-facing copy for each Claude launch destination, in editor display order.
+ *
+ * `runsPrompt` is false only for the native panel, which types the prompt but cannot send it.
+ * `needsFolder` is true only for a new VS Code window, which has to be told what to open.
+ */
+export const CLAUDE_DESTINATION_INFO: Record<ClaudeDestination,
+    { label: string; description: string; runsPrompt: boolean; needsFolder: boolean }> = {
+    terminalHere: {
+        label: 'Terminal in this window',
+        description: 'Opens a terminal here and runs the prompt in it.',
+        runsPrompt: true,
+        needsFolder: false
+    },
+    terminalNewWindow: {
+        label: 'Terminal in its own window',
+        description: 'Opens a terminal and tears it off into a separate window, running the prompt.',
+        runsPrompt: true,
+        needsFolder: false
+    },
+    externalTerminal: {
+        label: 'External terminal',
+        description: 'Runs the prompt in a terminal outside VS Code.',
+        runsPrompt: true,
+        needsFolder: false
+    },
+    newVsCodeWindow: {
+        label: 'New VS Code window',
+        description: 'Opens another folder in a new VS Code window and runs the prompt there.',
+        runsPrompt: true,
+        needsFolder: true
+    },
+    backgroundAgent: {
+        label: 'Background agent',
+        description: 'Starts the session in the background and returns straight away.',
+        runsPrompt: true,
+        needsFolder: false
+    },
+    headlessThenPanel: {
+        label: 'Headless, then open the panel',
+        description: 'Runs the prompt with no interface, then opens the finished session in the Claude panel.',
+        runsPrompt: true,
+        needsFolder: false
+    },
+    panelPrefill: {
+        label: 'Claude panel (prompt typed, not sent)',
+        description: 'Opens the Claude panel with the prompt typed into the box. You press Enter yourself. This is where a new button starts.',
+        runsPrompt: false,
+        needsFolder: false
+    }
+};
 export const NOTE_DEFAULT_ACTIONS: NoteDefaultAction[] = ['open', 'insert', 'copilot', 'copy'];
+
+/**
+ * Which `claude*` fields the editor shows for each destination.
+ *
+ * A field that means nothing for a destination is hidden rather than greyed out: an absent field
+ * asks no questions, a disabled one invites "why can I not set this". The native panel takes a
+ * session id and a prompt and nothing else, so a model picker there would be a lie.
+ */
+export const CLAUDE_FIELD_APPLICABILITY: Record<ClaudeDestination, readonly string[]> = {
+    terminalHere: CLAUDE_CLI_FIELDS,
+    terminalNewWindow: CLAUDE_CLI_FIELDS,
+    externalTerminal: CLAUDE_CLI_FIELDS,
+    newVsCodeWindow: [...CLAUDE_CLI_FIELDS, 'claudeTargetFolder'],
+    backgroundAgent: CLAUDE_CLI_FIELDS,
+    headlessThenPanel: [...CLAUDE_CLI_FIELDS, 'claudeNewWindow'],
+    panelPrefill: ['claudeNewWindow']
+};
 
 /** Button type display names and descriptions */
 export const BUTTON_TYPE_INFO: Record<ButtonType, { label: string; description: string; icon: string }> = {
@@ -508,5 +677,10 @@ export const BUTTON_TYPE_INFO: Record<ButtonType, { label: string; description: 
         label: 'Copilot Command',
         description: 'Sends a prompt to GitHub Copilot Chat',
         icon: 'copilot'
+    },
+    ClaudeCommand: {
+        label: 'Claude Command',
+        description: 'Starts a Claude Code session with the prompt already running',
+        icon: 'sparkle'
     }
 };

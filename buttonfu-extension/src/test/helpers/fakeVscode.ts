@@ -1,4 +1,5 @@
 import Module from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 
 const runtimeRequire = Module.createRequire(__filename);
@@ -141,6 +142,8 @@ export interface FakeVscodeHarness {
     readonly statusBarMessages: Array<{ text: string; timeout?: number }>;
     readonly warningMessages: string[];
     readonly errorMessages: string[];
+    /** Every line written to an output channel, keyed by channel name. */
+    readonly outputChannelLines: Map<string, string[]>;
     readonly executedTasks: unknown[];
     readonly quickPickCalls: Array<{ items: unknown[]; options: unknown }>;
     queueQuickPickResult(result: unknown): void;
@@ -159,7 +162,7 @@ export interface FakeVscodeHarness {
         documentText?: string;
     }): any;
     clearActiveTextEditor(): void;
-    createExtensionContext(): any;
+    createExtensionContext(storageRoot?: string): any;
 }
 
 export interface FakeWebviewPanelHarness {
@@ -191,6 +194,7 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
     const statusBarMessages: Array<{ text: string; timeout?: number }> = [];
     const warningMessages: string[] = [];
     const errorMessages: string[] = [];
+    const outputChannelLines = new Map<string, string[]>();
     const executedTasks: unknown[] = [];
     const quickPickCalls: Array<{ items: unknown[]; options: unknown }> = [];
     const quickPickQueue: unknown[] = [];
@@ -457,6 +461,22 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
                 webviewPanels.push(harnessPanel);
                 return panel;
             },
+            createOutputChannel: (name: string) => {
+                if (!outputChannelLines.has(name)) {
+                    outputChannelLines.set(name, []);
+                }
+                const lines = outputChannelLines.get(name)!;
+                return {
+                    name,
+                    append: (value: string) => { lines.push(value); },
+                    appendLine: (value: string) => { lines.push(value); },
+                    clear: () => { lines.length = 0; },
+                    show: () => { /* noop */ },
+                    hide: () => { /* noop */ },
+                    replace: (value: string) => { lines.length = 0; lines.push(value); },
+                    dispose: () => { /* noop */ }
+                };
+            },
             showWarningMessage: async (message: string) => {
                 warningMessages.push(message);
                 return warningMessageQueue.shift();
@@ -506,6 +526,7 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
         statusBarMessages,
         warningMessages,
         errorMessages,
+        outputChannelLines,
         executedTasks,
         quickPickCalls,
         queueQuickPickResult(result: unknown): void {
@@ -548,11 +569,18 @@ export function createFakeVscodeHarness(): FakeVscodeHarness {
         clearActiveTextEditor(): void {
             vscode.window.activeTextEditor = undefined;
         },
-        createExtensionContext: () => ({
+        /**
+         * @param storageRoot Where `globalStorageUri` and `storageUri` point. A test whose code
+         *   writes there should pass a directory it owns and deletes, because test files run in
+         *   parallel processes and a shared path outlives them all.
+         */
+        createExtensionContext: (storageRoot: string = path.join(os.tmpdir(), 'buttonfu-test-storage')) => ({
             subscriptions: [] as Array<{ dispose(): void }>,
             workspaceState: new FakeMemento(),
             globalState: new FakeMemento(),
             extensionUri: createUri(process.cwd()),
+            globalStorageUri: createUri(path.join(storageRoot, 'global')),
+            storageUri: createUri(path.join(storageRoot, 'workspace')),
             extensionMode: currentExtensionMode
         })
     };

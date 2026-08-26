@@ -303,3 +303,83 @@ test('saveButton rejects workspace buttons and deleteButton leaves them untouche
     const workspaceWrites = harness.configurationUpdates.filter((update) => update.key === 'buttonfu.workspaceButtons');
     assert.equal(workspaceWrites.length, 1);
 });
+
+test('a ClaudeCommand button survives a global store round-trip with every claude field intact', async () => {
+    const { store } = createStore();
+
+    await store.saveButton({
+        id: 'claude-button',
+        name: 'Plan this repo',
+        locality: 'Global',
+        description: '',
+        type: 'ClaudeCommand',
+        executionText: 'Read AGENTS.md and summarise what this repo does.',
+        category: 'Claude',
+        icon: 'sparkle',
+        colour: '',
+        copilotModel: '',
+        copilotMode: 'agent',
+        copilotAttachFiles: [],
+        copilotAttachActiveFile: false,
+        claudeDestination: 'headlessThenPanel',
+        claudeModel: 'opus',
+        claudeEffort: 'xhigh',
+        claudePermissionMode: 'bypassPermissions',
+        claudeCwd: 'C:\GIT\ButtonFu',
+        claudeTargetFolder: '',
+        claudeSessionName: 'repo plan',
+        claudeAddDirs: ['C:\GIT\Kitae', 'C:\GIT\Catanari'],
+        claudeWorktree: true,
+        claudeWorktreeName: 'planning',
+        claudeExtraArgs: ['--append-system-prompt', 'be terse'],
+        claudeNewWindow: true,
+        warnBeforeExecution: false,
+        userTokens: []
+    }, 'User');
+
+    const reloaded = store.getButton('claude-button');
+
+    assert.equal(reloaded.type, 'ClaudeCommand');
+    assert.equal(reloaded.claudeDestination, 'headlessThenPanel');
+    assert.equal(reloaded.claudeModel, 'opus');
+    assert.equal(reloaded.claudeEffort, 'xhigh');
+    assert.equal(reloaded.claudePermissionMode, 'bypassPermissions');
+    assert.equal(reloaded.claudeCwd, 'C:\GIT\ButtonFu');
+    assert.equal(reloaded.claudeSessionName, 'repo plan');
+    assert.deepEqual(reloaded.claudeAddDirs, ['C:\GIT\Kitae', 'C:\GIT\Catanari']);
+    assert.equal(reloaded.claudeWorktree, true);
+    assert.equal(reloaded.claudeWorktreeName, 'planning');
+    assert.deepEqual(reloaded.claudeExtraArgs, ['--append-system-prompt', 'be terse']);
+    assert.equal(reloaded.claudeNewWindow, true);
+});
+
+test('a button saved before Claude existed still loads with no claude keys', async () => {
+    const { harness, store } = createStore();
+
+    await harness.vscode.workspace.getConfiguration('buttonfu').update('globalButtons', [
+        {
+            id: 'old-button',
+            name: 'Old Terminal',
+            locality: 'Global',
+            description: '',
+            type: 'TerminalCommand',
+            executionText: 'echo hi',
+            category: 'General',
+            icon: 'terminal',
+            colour: '',
+            copilotModel: '',
+            copilotMode: 'agent',
+            copilotAttachFiles: [],
+            copilotAttachActiveFile: false,
+            warnBeforeExecution: false,
+            userTokens: []
+        }
+    ]);
+
+    const reloaded = store.getButton('old-button');
+
+    assert.equal(reloaded.type, 'TerminalCommand');
+    assert.equal(reloaded.claudeDestination, undefined);
+    assert.equal(reloaded.claudePermissionMode, undefined);
+    assert.equal(reloaded.claudeExtraArgs, undefined);
+});

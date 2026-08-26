@@ -1,0 +1,324 @@
+# Create a Claude button through the editor, set a destination and a model,
+# save it, reopen it, and verify the Claude fields survived the round trip.
+#
+# The button is named with the session GUID, so `cleanup.yaml` removes it
+# through "ButtonFu: Dev Clear Drive.NET Smoke Data" like every other suite's
+# artifacts. Nothing here starts a real Claude session: launching costs money
+# and depends on authentication state, so it is driven by hand instead.
+
+name: Claude Button Editor Smoke
+
+app:
+  process_name: Code
+  window_title_regex: '\[Extension Development Host\]'
+  single_instance: reuse
+
+setup:
+  - tool: interact
+    action: sendKeys
+    comment: Clear any open palette or dialog before starting.
+    args:
+      keys: "Escape"
+    continue_on_failure: true
+    delay_after_ms: 300
+
+tests:
+  # ── Open the Button Editor ────────────────────────────────────────
+  - name: open button editor from the sidebar
+    steps:
+      - tool: interact
+        action: sendKeys
+        comment: Dismiss any previously-open editor chrome.
+        args:
+          keys: "Escape"
+        continue_on_failure: true
+        delay_after_ms: 300
+
+      - tool: query
+        action: find
+        comment: Use the sidebar footer Editor action to open the Button Editor webview.
+        args:
+          automation_id: editAllBtn
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+        save:
+          open_editor_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Open the Button Editor.
+        args:
+          element_id: "${open_editor_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1500
+
+  # ── Create a new button and make it a Claude button ───────────────
+  - name: open add-button form
+    steps:
+      - tool: query
+        action: find
+        comment: Find the footer Add Button action.
+        args:
+          automation_id: addBtn
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count: 1
+        save:
+          add_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Open the editor overlay for a new button.
+        args:
+          element_id: "${add_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1000
+
+  - name: name the button and switch it to Claude Command
+    steps:
+      - tool: query
+        action: find
+        comment: Find the Name text input.
+        args:
+          automation_id: btn-name
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          name_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Enter the test button name.
+        args:
+          element_id: "${name_input}"
+          value: "${appSessionId}"
+        expect:
+          success: true
+
+      - tool: query
+        action: find
+        comment: Find the button type selector.
+        args:
+          automation_id: btn-type
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          type_select: $.items[0].elementId
+
+      - tool: interact
+        action: select
+        comment: Switch the button to Claude Command, which reveals the Claude settings.
+        args:
+          element_id: "${type_select}"
+          value: "Claude Command"
+        expect:
+          success: true
+        delay_after_ms: 600
+
+      - tool: capture
+        comment: The Claude settings section should now be visible.
+        args:
+          output: claude-button-01-section-visible.png
+        expect:
+          success: true
+
+  # ── Set the Claude fields ─────────────────────────────────────────
+  - name: set the destination, the model and the prompt
+    steps:
+      - tool: query
+        action: find
+        comment: Find the destination selector inside the Claude section.
+        args:
+          automation_id: btn-claudeDestination
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          destination_select: $.items[0].elementId
+
+      - tool: interact
+        action: select
+        comment: Choose the terminal-in-its-own-window destination.
+        args:
+          element_id: "${destination_select}"
+          value: "Terminal in its own window"
+        expect:
+          success: true
+        delay_after_ms: 400
+
+      - tool: query
+        action: find
+        comment: Find the model field.
+        args:
+          automation_id: btn-claudeModel
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          model_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Set a model alias.
+        args:
+          element_id: "${model_input}"
+          value: "opus"
+        expect:
+          success: true
+
+      - tool: query
+        action: find
+        comment: Find the prompt textarea, which a Claude button shares with the other types.
+        args:
+          automation_id: btn-executionText
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          prompt_input: $.items[0].elementId
+
+      - tool: interact
+        action: type
+        comment: Enter a harmless prompt. It is never sent by this suite.
+        args:
+          element_id: "${prompt_input}"
+          value: "Say hello and stop."
+        expect:
+          success: true
+
+  # ── Save ──────────────────────────────────────────────────────────
+  - name: save the new Claude button
+    steps:
+      - tool: query
+        action: find
+        comment: Locate the Save button in the editor header.
+        args:
+          automation_id: saveBtn
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+        save:
+          save_btn: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Save the button.
+        args:
+          element_id: "${save_btn}"
+        expect:
+          success: true
+        delay_after_ms: 1200
+
+      - tool: capture
+        comment: The saved card should show the Claude destination in its meta line.
+        args:
+          output: claude-button-02-saved.png
+        expect:
+          success: true
+
+  - name: verify the Claude button card appears
+    steps:
+      - tool: query
+        action: find
+        comment: The saved button should be visible in the editor list with its name.
+        args:
+          name: "${appSessionId}"
+          control_type: Text
+          max_results: 50
+          fallback: true
+        expect:
+          success: true
+          count_gte: 1
+
+      - tool: query
+        action: find
+        comment: >
+          The card meta line names the destination, which proves the Claude fields
+          reached the store rather than being dropped on the way through.
+        args:
+          name: "Terminal in its own window"
+          control_type: Text
+          max_results: 50
+          fallback: true
+        expect:
+          success: true
+          count_gte: 1
+
+  # ── Reopen and confirm the fields survived ────────────────────────
+  - name: reopen the button and confirm the Claude fields round-tripped
+    steps:
+      - tool: query
+        action: find
+        comment: Find the saved card so it can be reopened.
+        args:
+          name: "${appSessionId}"
+          control_type: Text
+          max_results: 50
+          fallback: true
+        expect:
+          success: true
+          count_gte: 1
+        save:
+          saved_card: $.items[0].elementId
+
+      - tool: interact
+        action: click
+        comment: Reopen the button in the editor overlay.
+        args:
+          element_id: "${saved_card}"
+        expect:
+          success: true
+        delay_after_ms: 1000
+
+      - tool: query
+        action: find
+        comment: >
+          The model field should still hold what was typed before the save. Matching on
+          the value is what proves the Claude fields round-tripped through storage rather
+          than coming back empty.
+        args:
+          automation_id: btn-claudeModel
+          value: "opus"
+          fallback: true
+          max_results: 20
+        expect:
+          success: true
+          count_gte: 1
+
+      - tool: capture
+        comment: The reopened button, with its Claude section populated.
+        args:
+          output: claude-button-03-reopened.png
+        expect:
+          success: true
+
+teardown:
+  - tool: interact
+    action: sendKeys
+    comment: Close the editor tab.
+    args:
+      keys: "Ctrl+F4"
+    continue_on_failure: true
+
+finally:
+  - tool: interact
+    action: sendKeys
+    comment: Dismiss any remaining overlay.
+    args:
+      keys: "Escape"
+    continue_on_failure: true

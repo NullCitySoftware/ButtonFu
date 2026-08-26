@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
 import {
+    BUTTON_TYPES,
     ButtonConfig,
     ButtonFuItemActor,
     ButtonLocality,
     ButtonType,
+    CLAUDE_DESTINATION_INFO,
+    ClaudeDestination,
     deriveButtonFuItemSource,
     deriveWorkspaceButtonId,
     generateId,
@@ -13,7 +16,15 @@ import {
     normalizeButtonFuItemActor
 } from './types';
 
-const VALID_BUTTON_TYPES: readonly string[] = ['TerminalCommand', 'PaletteAction', 'TaskExecution', 'CopilotCommand'];
+const VALID_BUTTON_TYPES: readonly string[] = BUTTON_TYPES;
+const VALID_CLAUDE_DESTINATIONS: readonly string[] = Object.keys(CLAUDE_DESTINATION_INFO);
+
+/** Copies a string array, dropping anything that is not a string. Undefined stays undefined. */
+function copyStringArray(value: unknown): string[] | undefined {
+    return Array.isArray(value)
+        ? (value as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+        : undefined;
+}
 
 /**
  * Manages persistence of button configurations.
@@ -90,6 +101,18 @@ export class ButtonStore {
             copilotMode: result.copilotMode,
             copilotAttachFiles: Array.isArray(result.copilotAttachFiles) ? [...result.copilotAttachFiles] : [],
             copilotAttachActiveFile: result.copilotAttachActiveFile,
+            claudeDestination: result.claudeDestination,
+            claudeModel: result.claudeModel,
+            claudeEffort: result.claudeEffort,
+            claudePermissionMode: result.claudePermissionMode,
+            claudeCwd: result.claudeCwd,
+            claudeTargetFolder: result.claudeTargetFolder,
+            claudeSessionName: result.claudeSessionName,
+            claudeAddDirs: copyStringArray(result.claudeAddDirs),
+            claudeWorktree: result.claudeWorktree,
+            claudeWorktreeName: result.claudeWorktreeName,
+            claudeExtraArgs: copyStringArray(result.claudeExtraArgs),
+            claudeNewWindow: result.claudeNewWindow,
             sortOrder: result.sortOrder,
             warnBeforeExecution: result.warnBeforeExecution,
             userTokens: result.userTokens?.map((token) => ({ ...token })),
@@ -187,6 +210,20 @@ export class ButtonStore {
                 ? (raw.copilotAttachFiles as unknown[]).filter((f): f is string => typeof f === 'string')
                 : [],
             copilotAttachActiveFile: Boolean(raw.copilotAttachActiveFile),
+            claudeDestination: VALID_CLAUDE_DESTINATIONS.includes(raw.claudeDestination as string)
+                ? raw.claudeDestination as ClaudeDestination
+                : undefined,
+            claudeModel: typeof raw.claudeModel === 'string' ? raw.claudeModel : undefined,
+            claudeEffort: typeof raw.claudeEffort === 'string' ? raw.claudeEffort : undefined,
+            claudePermissionMode: typeof raw.claudePermissionMode === 'string' ? raw.claudePermissionMode : undefined,
+            claudeCwd: typeof raw.claudeCwd === 'string' ? raw.claudeCwd : undefined,
+            claudeTargetFolder: typeof raw.claudeTargetFolder === 'string' ? raw.claudeTargetFolder : undefined,
+            claudeSessionName: typeof raw.claudeSessionName === 'string' ? raw.claudeSessionName : undefined,
+            claudeAddDirs: copyStringArray(raw.claudeAddDirs),
+            claudeWorktree: typeof raw.claudeWorktree === 'boolean' ? raw.claudeWorktree : undefined,
+            claudeWorktreeName: typeof raw.claudeWorktreeName === 'string' ? raw.claudeWorktreeName : undefined,
+            claudeExtraArgs: copyStringArray(raw.claudeExtraArgs),
+            claudeNewWindow: typeof raw.claudeNewWindow === 'boolean' ? raw.claudeNewWindow : undefined,
             sortOrder: typeof raw.sortOrder === 'number' ? raw.sortOrder : undefined,
             warnBeforeExecution: Boolean(raw.warnBeforeExecution),
             userTokens: Array.isArray(raw.userTokens) ? raw.userTokens as ButtonConfig['userTokens'] : [],

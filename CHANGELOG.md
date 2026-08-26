@@ -2,6 +2,24 @@
 
 All notable changes to ButtonFu are documented here.
 
+## [1.3.0] - 2026-08-26
+
+### Added
+- **Claude Command buttons** - a new button type that starts a Claude Code session with the prompt already sent, so one click gets you a working session rather than an empty prompt box. Seven places to run it: a terminal in this window, a terminal torn off into its own window, a terminal outside VS Code, a new VS Code window on another folder, a background agent, a headless run that then opens the finished conversation, and the Claude panel. Prompts go through the same token system as every other button type, so `$WorkspacePath$` and your own tokens work in the prompt and in the directory fields.
+
+  **A new Claude button starts on the Claude panel**, which types the prompt in and waits for you to press Enter, so the first click on a button you have just written shows you the prompt rather than setting an unattended session off. Switch the destination once you are happy with it and the button runs on one click. No extension can submit a prompt inside another extension's panel, or set its model from outside, so the panel hides the model, effort and permission fields; **Headless, then open the panel** is the destination that gives you all three and still ends up in the panel.
+
+  A terminal ButtonFu opens is a real VS Code session: diffs open in the editor and Claude can see your selection. A background agent deliberately is not, because it outlives the window that started it.
+
+- **Show Claude Background Agents** - a command that lists the background sessions running on this machine and offers to carry one on, either in a terminal or in the Claude panel.
+
+- **`buttonfu.api.runButton`** on the Agent Bridge, so an agent in one window can start a Claude button in another. It is **off by default** (`buttonfu.claude.allowBridgeRun`) and it runs **Claude buttons only**: every other type is refused by type, whatever the setting says. A button that needs values for its user tokens is refused too, unless the caller supplies them, because a bridge call has nobody to ask.
+
+- **New settings**: `buttonfu.claude.executablePath`, `buttonfu.claude.defaultPermissionMode`, `buttonfu.claude.externalTerminalCommand`, `buttonfu.claude.handoffTimeoutSeconds` and `buttonfu.claude.allowBridgeRun`.
+
+### Fixed
+- The sidebar panel no longer falls back to older content after being hidden and shown again. Hiding the panel tears its contents down, and VS Code brings them back from the last full document ButtonFu wrote, so changes delivered while it was on screen were lost on the next hide and show, and changes made while it was hidden never arrived at all. A deleted button could reappear and the column count could snap back.
+
 ## [1.2.0] - 2026-07-16
 
 ### Added

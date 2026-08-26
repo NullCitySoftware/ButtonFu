@@ -319,6 +319,15 @@ export function registerAgentBridgeCommands(context: vscode.ExtensionContext, ge
                 ...buildBridgeContextLines(currentBridge)
             ];
 
+            lines.push(
+                '',
+                '## Running a button',
+                '',
+                '`buttonfu.api.runButton` starts a Claude button in this window. It is off by default: '
+                    + 'turn on `buttonfu.claude.allowBridgeRun` first. Buttons of any other type are '
+                    + 'always refused, whatever that setting says.'
+            );
+
             if (currentBridge) {
                 lines.push(
                     '',

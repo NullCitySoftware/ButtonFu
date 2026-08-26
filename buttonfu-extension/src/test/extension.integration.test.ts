@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { writeHandoffJob } from '../claudeHandoff';
 import type { ApiResult, ButtonConfig, NoteConfig } from '../types';
 import type { DevApiSmokeResult } from '../devApiSmoke';
 import { createDefaultButton } from '../types';
 import { createFakeVscodeHarness, loadWithPatchedVscode } from './helpers/fakeVscode';
+import { tempDirectory, useTempDirectory } from './helpers/tempCleanup';
+
+const TEMP_ROOT = useTempDirectory('activation');
 
 const DEV_RESET_API_SMOKE_COMMAND = 'buttonfu.dev.resetApiSmokeData';
 const DEV_CLEAR_API_SMOKE_COMMAND = 'buttonfu.dev.clearApiSmokeData';
@@ -52,7 +56,7 @@ test('activate registers the flat note commands and providers', async () => {
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -68,6 +72,7 @@ test('activate registers the flat note commands and providers', async () => {
         'buttonfu.api.listButtons',
         'buttonfu.api.updateButton',
         'buttonfu.api.deleteButton',
+        'buttonfu.api.runButton',
         'buttonfu.openNoteEditor',
         'buttonfu.addNote',
         'buttonfu.executeNote',
@@ -90,6 +95,7 @@ test('activate registers the flat note commands and providers', async () => {
         'buttonfu.agentBridgeSelfTest',
         'buttonfu.agentBridgeCopyQuickStart',
         'buttonfu.agentBridgeShowContext',
+        'buttonfu.claude.showAgents',
         DEV_RESET_API_SMOKE_COMMAND,
         DEV_CLEAR_API_SMOKE_COMMAND,
         DEV_CLEAR_DRIVE_NET_SMOKE_COMMAND
@@ -123,7 +129,7 @@ test('copyAgentBridgeInstructions generates a PowerShell example that works from
             }]
         })
     );
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     await extension.activate(context);
 
@@ -149,7 +155,7 @@ test('copyAgentBridgeInstructions uses supported enablement guidance when the br
         harness.vscode,
         createAgentBridgeOverride()
     );
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     await extension.activate(context);
 
@@ -178,7 +184,7 @@ test('agentBridgeCopyQuickStart includes targetWindowId for the active window', 
             }]
         })
     );
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     await extension.activate(context);
 
@@ -209,7 +215,7 @@ test('agentBridgeSelfTest reports the current bridge selectors for the active wi
             }]
         })
     );
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     await extension.activate(context);
 
@@ -239,7 +245,7 @@ test('agentBridgeShowContext warns when the active bridge has no workspace folde
             }]
         })
     );
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     await extension.activate(context);
 
@@ -257,7 +263,7 @@ test('production activation does not register development-only smoke commands', 
     harness.setExtensionMode(harness.vscode.ExtensionMode.Production);
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -270,7 +276,7 @@ test('button api commands create list update get and delete through the register
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -315,7 +321,7 @@ test('note api commands create list update get and delete through the registered
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -388,7 +394,7 @@ test('api create commands optionally open the editors for the saved item', async
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -409,7 +415,7 @@ test('development smoke commands reset and clear repeatable local api smoke data
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -480,7 +486,7 @@ test('addNote prompts for scope when invoked without a locality', async () => {
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
     harness.queueQuickPickResult({ locality: 'Local' });
@@ -520,7 +526,7 @@ test('addNote uses an explicit locality without prompting', async () => {
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
 
@@ -552,7 +558,7 @@ test('executeNote routes through the note action service default action', async 
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
     await harness.registeredCommands.get('buttonfu.executeNote')?.('note-123');
@@ -587,7 +593,7 @@ test('openNoteEditor is enabled by default and opens the editor', async () => {
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
     await harness.registeredCommands.get('buttonfu.openNoteEditor')?.();
@@ -623,7 +629,7 @@ test('notes commands are blocked when the showNotes setting is disabled', async 
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
     await harness.vscode.workspace.getConfiguration('buttonfu').update('showNotes', false);
@@ -704,7 +710,7 @@ test('disabling showNotes closes the note editor and refreshes the sidebar provi
             }
         }
     });
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     extension.activate(context);
     await harness.vscode.workspace.getConfiguration('buttonfu').update('showNotes', false);
@@ -717,7 +723,7 @@ test('dynamic button commands are registered for saved buttons and removed after
     const harness = createFakeVscodeHarness();
     const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
     const extension = loadWithPatchedVscode<{ activate(context: any): void }>(extensionModulePath, harness.vscode);
-    const context = harness.createExtensionContext();
+    const context = harness.createExtensionContext(TEMP_ROOT);
 
     const button = createDefaultButton('Global');
     button.id = 'dynamic-button';
@@ -733,4 +739,87 @@ test('dynamic button commands are registered for saved buttons and removed after
     await harness.registeredCommands.get('buttonfu.deleteButton')?.({ buttonId: button.id });
 
     assert.equal(harness.registeredCommands.has('buttonfu.run.dynamic-button'), false);
+});
+test('activation claims a job waiting for this folder and starts it', async () => {
+    const harness = createFakeVscodeHarness();
+    const context = harness.createExtensionContext(TEMP_ROOT);
+    const storage = context.globalStorageUri.fsPath;
+    const folder = tempDirectory(TEMP_ROOT, 'activation');
+    fs.rmSync(path.join(storage, 'claude-jobs'), { recursive: true, force: true });
+    harness.setWorkspaceFolders([{ fsPath: folder, name: path.basename(folder) }]);
+
+    const launched: any[] = [];
+    const overrides = {
+        ...createAgentBridgeOverride(),
+        './claudeSessionService': {
+            ClaudeSessionService: class {
+                async launch(): Promise<void> { /* not used here */ }
+                async launchSpec(spec: unknown, buttonName: string): Promise<void> {
+                    launched.push({ spec, buttonName });
+                }
+            }
+        }
+    };
+
+    writeHandoffJob(storage, folder, 'Queued Button', {
+        destination: 'newVsCodeWindow',
+        prompt: 'Summarise this repo.',
+        cwd: folder,
+        sessionId: '11111111-2222-3333-4444-555555555555'
+    });
+
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    const extension = loadWithPatchedVscode<{ activate(context: any): void }>(
+        extensionModulePath, harness.vscode, overrides);
+    extension.activate(context);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(launched.length, 1, 'The queued launch should start with no click in between.');
+    assert.equal(launched[0].buttonName, 'Queued Button');
+    assert.equal(launched[0].spec.destination, 'terminalHere');
+    assert.deepEqual(fs.readdirSync(path.join(storage, 'claude-jobs')), [],
+        'The job must be gone, so a later window does not run it again.');
+
+    fs.rmSync(folder, { recursive: true, force: true });
+});
+
+test('activation ignores a job queued for a different folder', async () => {
+    const harness = createFakeVscodeHarness();
+    const context = harness.createExtensionContext(TEMP_ROOT);
+    const storage = context.globalStorageUri.fsPath;
+    const wanted = tempDirectory(TEMP_ROOT, 'wanted');
+    const here = tempDirectory(TEMP_ROOT, 'here');
+    fs.rmSync(path.join(storage, 'claude-jobs'), { recursive: true, force: true });
+    harness.setWorkspaceFolders([{ fsPath: here, name: path.basename(here) }]);
+
+    const launched: any[] = [];
+    const overrides = {
+        ...createAgentBridgeOverride(),
+        './claudeSessionService': {
+            ClaudeSessionService: class {
+                async launch(): Promise<void> { /* not used here */ }
+                async launchSpec(spec: unknown, buttonName: string): Promise<void> {
+                    launched.push({ spec, buttonName });
+                }
+            }
+        }
+    };
+
+    writeHandoffJob(storage, wanted, 'Someone Else', {
+        destination: 'newVsCodeWindow', prompt: 'x', cwd: wanted, sessionId: 'abc'
+    });
+
+    const extensionModulePath = path.resolve(__dirname, '..', 'extension.js');
+    const extension = loadWithPatchedVscode<{ activate(context: any): void }>(
+        extensionModulePath, harness.vscode, overrides);
+    extension.activate(context);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(launched.length, 0);
+    assert.equal(fs.readdirSync(path.join(storage, 'claude-jobs')).length, 1,
+        'Another window job must still be waiting for it.');
+
+    fs.rmSync(path.join(storage, 'claude-jobs'), { recursive: true, force: true });
+    fs.rmSync(wanted, { recursive: true, force: true });
+    fs.rmSync(here, { recursive: true, force: true });
 });
